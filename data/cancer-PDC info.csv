@@ -1,0 +1,20 @@
+cancer type ,cancer type abbreviation,PDC Pro,PDC Phospro
+Ovarian Serous Cystadenocarcinoma,OV,PDC000113,PDC000115
+Colon Adenocarcinoma,COAD,PDC000116,PDC000117
+Ovarian Serous Cystadenocarcinoma,OV,PDC000118,PDC000119
+Breast Invasive Carcinoma,BRCA,PDC000120,PDC000121
+Uterine Corpus Endometrial Carcinoma,UCEC,PDC000125,PDC000126
+Clear Cell Renal Cell Carcinoma,CCRCC,PDC000127,PDC000128
+Lung Adenocarcinoma,LUAD,PDC000153,PDC000149
+Breast Invasive Carcinoma,BRCA,PDC000173,PDC000174
+Pediatric Brain Tumors,Brain Cancer,PDC000180,PDC000176
+Hepatocellular Carcinoma,LIHC,PDC000198,PDC000199
+Glioblastoma,GBM,PDC000204,PDC000205
+Early Onset Gastric Cancer,Gastric Cancer,PDC000214,PDC000215
+Lung Adenocarcinoma,LUAD,PDC000219,PDC000220
+Head and Neck Squamous Cell Carcinoma,HNSCC,PDC000221,PDC000222
+Lung Squamous Cell Carcinoma,LUSC,PDC000234,PDC000232
+Pancreatic Ductal Adenocarcinoma,PDAC,PDC000248,PDC000249
+Pancreatic Ductal Adenocarcinoma,PDAC,PDC000270,PDC000271
+Lung Adenocarcinoma,LUAD,PDC000434,PDC000436
+Acute Myeloid Leukemia,AML,PDC000477,PDC000478
