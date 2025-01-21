@@ -18,11 +18,9 @@ devtools::install_github("LYING7797/CPGTA")
 ```
 
 Data Required
-Before using the CPGTA package, the necessary data will be automatically downloaded during the installation process. The package will download the required data files from Google Drive.
+Before using the CPGTA package, the necessary data will be automatically downloaded during the installation process. The data will be stored in the CPGTA folder within your project directory.
 
-The data will be stored in the data1/ folder within your project directory. The download process will occur automatically when you load the package.
-
-If for some reason the data is not downloaded correctly, you can manually trigger the download by running:
+The download process will occur automatically when you load the package. If for some reason the data is not downloaded correctly, you can manually trigger the download by running:
 
 ```{r}
 # Manually trigger the download of data
