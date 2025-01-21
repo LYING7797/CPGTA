@@ -1,13 +1,12 @@
 
-# CPGTA - Clinical ProteoGenomics Tumor Analysis
-## Overview
+CPGTA - Clinical ProteoGenomics Tumor Analysis
 
+Overview
 The CPGTA package is designed for processing and analyzing clinical cancer-related ProteoGenomics data, including multi-omics data download, correlation analysis, differential analysis, immunosubtype classification, and survival analysis. The package supports various types of omics data such as transcriptomics, proteomics, and phosphoproteomics.
 
 
 
 ## Installation
-
 You can install the latest version of the `CPGTA` package from GitHub using the `devtools` package:
 
 ```{r}
@@ -74,6 +73,7 @@ data.type: Optional data type ("Harmonized","Normalized").
 sample.type: Optional sample type ("Normal tissue", "Primary tumor").
 
 Example:
+
 ```{r}
 result1 <- cptod(
   cancer.type = "BRCA",
