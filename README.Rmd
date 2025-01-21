@@ -10,7 +10,7 @@ The CPGTA package is designed for processing and analyzing clinical cancer-relat
 
 You can install the latest version of the `CPGTA` package from GitHub using the `devtools` package:
 
-```{r cars}
+```{r}
 # Install devtools if not already installed
 install.packages("devtools")
 
@@ -70,7 +70,6 @@ sample.type: Optional sample type ("Normal tissue", "Primary tumor").
 
 Example:
 ```{r}
-
 result1 <- cptod(
   cancer.type = "BRCA",
   data.category = "Clinical data",
@@ -144,7 +143,6 @@ Arguments:
 @param top.gene: The number of top genes to plot based on significance (maximum of 20).
 
 ```{r}
-
 res <- cptda (
   cancer.type  = "BRCA",
   data.category = "Proteome",
