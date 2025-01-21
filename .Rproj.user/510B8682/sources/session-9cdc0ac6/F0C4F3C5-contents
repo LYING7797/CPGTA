@@ -1,0 +1,37 @@
+rm(list = ls())
+
+# 读入所有的tidy文件，并放在一个列表里
+tidy_RNA_list <- list.files("./RNA_tidy_data/",pattern = ".csv")
+
+# #都有重复出现的gene name,保留最大值,且把全零行删除
+unirna <- function(data){
+  m <- t(data)
+  colnames(m) <- m[2,]
+  m <- m[-c(1:2),]
+  m <- apply(m,c(1,2),as.numeric)
+  
+  f <- table(colnames(m))
+  g <- names(f)[f>1]
+  col <- vector()
+  # 遍历重复列名并计算均值
+  for (x in g) {
+    col_indices <- which(colnames(m) == x)
+    col_means <- colMeans(m[,col_indices])
+    # 找到均值最大的列名的索引
+    max_mean_col <- col_indices[which.max(col_means)]
+    # 把索引放进一个列表里
+    col <- c(col,max_mean_col) 
+  }
+  data1 <- m[,!colnames(m) %in% g]
+  data2 <- cbind(data1,m[,col])
+  data3 <- t(data2)
+  data4 <- data3[rowSums(data3)>0,]
+}
+
+
+for(i in 1:length(tidy_RNA_list)){
+  path <- paste0("./RNA_tidy_data/",tidy_RNA_list[i])
+  data <- read.delim(path,sep = ",",header = TRUE,check.names = FALSE)
+  data <- unirna(data)
+  write.csv(data,paste0("./RNA_tidy_data_unique/",sub("_nor.csv",".csv",tidy_RNA_list[i])))
+}

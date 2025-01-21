@@ -1,0 +1,62 @@
+已知文件夹结构如下：
+Copy Number Variation
+    -Tidy data
+        -文件名示例：PDC000113_cnv_tumor.csv
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为tumor)
+
+    -Normalized data
+        -文件名示例：PDC000113_cnv_normal_nor.csv
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为normal tissue)
+
+
+Transcriptome（同Copy Number Variation，）
+    -Tidy data
+        -文件名示例：PDC000113_rna_tumor.csv
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为tumor)
+
+    -Normalized data
+        -文件名示例：PDC000113_rna_normal_nor.csv
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为normal tissue)
+    -Counts data
+    	--文件名示例：PDC000113_rna_normal.csv
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为normal tissue)
+Proteome（同Copy Number Variation）
+Phosphoproteome（同Copy Number Variation）
+Biospecimen（文件夹下无层次的文件结构，文件名示例PDC000113_biospecimen.csv）
+Clinical data(文件夹下无层次的文件结构，文件名示例PDC000113_biospecimen.csv)
+
+在上述文件夹结构下，我想用R语言实现一个查找函数，
+函数的参数如下：cancer.type，data.category， PDC.study.identifier，data.type（Tidy data,Normalized data,Counts data(只有Transcriptome有)）， sample.type（Normal tissue,Tumor）。
+1.其中前两个参数是必须的：cancer.type，data.category
+2.cancer.type的默认范围是cancer-PDC info.csv文件中cancer type和cancer type abbreviation列的值
+3.data.category的默认范围是Copy Number Variation，Transcriptome，Proteome，Phosphoproteome,Biospecimen,Clinical data
+4.PDC.study.identifier的默认范围是cancer-PDC info.csv文件中PDC pro和PDC Phospro列的值
+5.data.type的默认范围是Tidy data,Normalized data
+6.sample.type的默认范围是Normal tissue,Tumor
+7.如果只给出cancer.type，data.category这两个参数，则根据cancer-PDC info.csv文件确认所有对应的PDC.study.identifier，并给出指定data.category下的符合条件的文件
+8.文件名包括PDC编号，sample.type(normal,tumor)信息，例如：PDC000113_tumor_nor,通过捕捉文件名中的"tumor"和"normal"关键字确定sample.type
+9.其中癌症类型与PDC编号有对应表格cancer-PDC info.csv，可通过PDC编号的文件名确定癌症类型
+10.Biospecimen和Clinical data文件夹下就是PDC编号命名的文件，不存在处理过的数据或标准化后的数据，也不分normal和tumor
+11.输入参数缺少的，给出报错信息
+12.输入参数不在默认范围内的，给出报错信息
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

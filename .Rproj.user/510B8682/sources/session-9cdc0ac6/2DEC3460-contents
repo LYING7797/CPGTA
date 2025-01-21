@@ -1,0 +1,120 @@
+cptic <- function(cancer.type, data.category) {
+  # 检查是否提供了所有必要的参数
+  if (missing(cancer.type) || missing(data.category)) {
+    stop("错误: 缺少必要的输入参数 'cancer.type' 或 'data.category'。")
+  }
+  
+  # 定义文件路径
+  cancer_pdc_info_file <- "./data1/cancer-PDC info.csv"
+  alltumor_file <- "./data1/TME/alltumor.csv"
+  tme_folder <- "./data1/TME/"
+  
+  # 检查文件是否存在
+  if (!file.exists(cancer_pdc_info_file)) {
+    stop(paste("错误: 找不到文件", cancer_pdc_info_file))
+  }
+  if (!file.exists(alltumor_file)) {
+    stop(paste("错误: 找不到文件", alltumor_file))
+  }
+  
+  # 读取 cancer-PDC info.csv
+  cancer_pdc_info <- tryCatch({
+    read.csv(cancer_pdc_info_file, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop("错误: 无法读取 'cancer-PDC info.csv' 文件。")
+  })
+  
+  
+  valid_cancer_types <- unique(c(cancer_pdc_info$cancer_type, cancer_pdc_info$abbreviation))
+  
+  # 验证 cancer.type 是否在有效范围内
+  if (!(cancer.type %in% valid_cancer_types)) {
+    stop(paste("错误: 'cancer.type' 参数不在有效范围内。有效值为:", paste(valid_cancer_types, collapse = "\n ")))
+  }
+  
+  # 验证 data.category 是否在有效范围内
+  valid_data_categories <- c("Transcriptome", "Proteome")
+  if (!(data.category %in% valid_data_categories)) {
+    stop(paste("错误: 'data.category' 参数不在有效范围内。有效值为:", paste(valid_data_categories, collapse = "\n ")))
+  }
+  
+  # 根据 data.category 选择相应的文件
+  if (data.category == "Transcriptome") {
+    classified_file <- file.path(tme_folder, "classified_samples_rna.tsv")
+    pdc_column <- "PDC_RNA"
+  } else { # Proteome
+    classified_file <- file.path(tme_folder, "classified_samples_pro.tsv")
+    pdc_column <- "PDC_Pro"
+  }
+  
+  # 检查分类文件是否存在
+  if (!file.exists(classified_file)) {
+    stop(paste("错误: 找不到文件", classified_file))
+  }
+  
+  # 读取分类样本文件
+  classified_samples <- tryCatch({
+    read.delim(classified_file, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop(paste("错误: 无法读取文件", classified_file))
+  })
+  
+  
+  # 获取 PDC 值对应的列名（根据 cancer.type）
+  # 首先确定 cancer.type 在 'cancer-PDC info.csv' 中的具体行
+  cancer_info_row <- cancer_pdc_info[
+    cancer_pdc_info$cancer_type == "LUAD" | cancer_pdc_info$abbreviation == "LUAD",]
+  
+  
+  # 获取对应的 PDC 列名，并根据 data.category 给出具体错误信息
+  if (data.category == "Transcriptome") {
+    pdc_column_name <- cancer_info_row$PDC_RNA
+    if (all(!(pdc_column_name %in% alltumor_data$PDC_RNA))) {
+      stop(paste("错误: 该癌种", "LUAD", "没有可用的转录组数据免疫分型。"))
+    }
+  } else { # Proteome
+    pdc_column_name <- cancer_info_row$PDC_Pro
+    if (all(!(pdc_column_name %in% alltumor_data$PDC_RNA))) {
+      stop(paste("错误: 该癌种", cancer.type, "没有可用的蛋白质组数据免疫分型。"))
+    }
+  }
+  
+  # 读取 alltumor.csv
+  alltumor <- tryCatch({
+    read.csv(alltumor_file,row.names = 1, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop("错误: 无法读取 'alltumor.csv' 文件。")
+  })
+  
+  pdc_column_names
+  # 获取对应的 PDC 值
+  pdc_values <- alltumor[[pdc_column]]
+  
+  # 根据 PDC 值获取 sample 名称
+  # 检查 pdc_column_name 是否在 pdc_values 中
+  missing_pdc <- setdiff(pdc_column_name, pdc_values)
+  if (length(missing_pdc) > 0) {
+    stop(paste("错误: 在 'alltumor.csv' 中未找到以下 PDC 值:", paste(missing_pdc, collapse = ", ")))
+  }
+  # 获取对应行的 sample 名称，假设有 'sample' 列
+  if (!("sample" %in% colnames(alltumor))) {
+    stop("错误: 'alltumor.csv' 文件中缺少 'sample' 列。")
+  }
+  
+  sample_names <- alltumor$sample[pdc_values %in% pdc_column_name]
+  
+  if (length(sample_names) == 0) {
+    stop("错误: 未找到对应的 sample 名称。")
+  }
+  
+  # 根据 sample 名称过滤分类样本
+  result_matrix <- classified_samples[classified_samples$sample %in% sample_names, ]
+  
+  # 检查是否有匹配的样本
+  if (nrow(result_matrix) == 0) {
+    stop("错误: 根据提供的参数未找到匹配的样本。")
+  }
+  
+  # 返回结果矩阵
+  return(result_matrix)
+}

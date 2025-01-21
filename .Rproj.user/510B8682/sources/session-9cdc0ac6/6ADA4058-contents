@@ -1,0 +1,96 @@
+
+library(readr)
+library(readxl)
+library(ggrepel)
+setwd("/media/lying/LYING/2024_10_09_杭州_刘军_细菌分析/02_DEG_analysis/")
+
+# AB <- read_delim("./DEG_analysis_results/Expression_data/B2_vs_A1_DEG_data.txt",
+                 # delim = "\t")
+AC <- read_delim("./DEG_analysis_results/Expression_data/C3_vs_A1_DEG_data.txt",
+                 delim = "\t")
+annotation <- read_delim("../00_Reference_genome_annotation_files/Acinetobacter_baumannii_KEGG_gene_def.txt",
+                         delim = "\t")
+kegg_ref <- read_delim("../00_Funrich_analysis_def_files/Acinetobacter_baumannii_KEGG.txt",delim = "\t")
+othergene <- c("FQU82_RS05875", "FQU82_RS15730", "FQU82_RS14750",
+               "FQU82_RS00360", "FQU82_RS11690")
+
+antimicro <- kegg_ref[kegg_ref$`ko00010:Glycolysis_Gluconeogenesis` == "ko01504:Antimicrobial resistance genes" | kegg_ref$FQU82_RS00885 %in% othergene,]
+
+antigene <- unique(antimicro$FQU82_RS00885)
+AC <- merge(AC,annotation,by.x = "GeneID",by.y = "GeneID",all.x = TRUE )
+
+
+library(dplyr)
+library(stringr)
+
+AC_down_kegg <- read_excel("./Pathway_enrichment_analysis/DEG_pathway_enrichment_raw_data/C3_vs_A1_Down_EnrichmentKEGG.xlsx")
+# AC_down_GO <- read_excel("./Pathway_enrichment_analysis/DEG_pathway_enrichment_raw_data/C3_vs_A1_Down_EnrichmentGO.xlsx")
+AC_up_kegg <- read_excel("./Pathway_enrichment_analysis/DEG_pathway_enrichment_raw_data/C3_vs_A1_Up_EnrichmentKEGG.xlsx")
+# AC_up_GO <- read_excel("./Pathway_enrichment_analysis/DEG_pathway_enrichment_raw_data/C3_vs_A1_Up_EnrichmentGO.xlsx")
+
+AC_kegg <- rbind(AC_down_kegg,AC_up_kegg)
+# AC_GO <- rbind(AC_down_GO,AC_up_GO)
+
+AC_kegg_filter <- AC_kegg %>%
+  filter(str_detect(Description, "Antimicrobial resistance genes"))
+
+AC_gene <- unlist(str_split(AC_kegg_filter$geneID,"/")) #12gene
+
+AC$group <- ifelse(AC$log2FoldChange > 1.5 & AC$padj < 0.05, "Up",
+                   ifelse(AC$log2FoldChange < -1.5 & AC$padj < 0.05, "Down", "No Significant"))
+AC$color1 <- ifelse(AC$group == "Up","pink",
+                   ifelse(AC$group == "Down", "lightblue","#d8d8d8"))
+
+AC$group[AC$GeneID %in% antigene] <- "Antimicrobial resistance genes"
+AC$color1[AC$GeneID %in% antigene] <- "grey40"
+AC$color1[AC$Gene_shortname == "mdfA"] <- "blue"
+
+top20 <- AC[AC$GeneID %in% antigene,]
+si_top20 <- top20[top20$Gene_shortname == "mdfA",]
+no_top20 <- top20[!top20$Gene_shortname == "mdfA",]
+# 除掉要标识的所在行的数据
+other20 <- AC[!AC$GeneID %in% antigene,]#12
+
+# 合并gene名
+
+mycol <- c("#d8d8d8" = "No Significant",
+           "blue" = "Antimicrobial resistance genes",
+           "grey40" = "Antimicrobial resistance genes",
+           "lightblue" = "Down",
+           "pink" = "Up"
+           )
+
+
+  p<- ggplot() + #建立映射
+    geom_point(data = other20, aes(x=log2FoldChange,y= -log10(padj),color = color1),size = 3) + #绘制散点
+    scale_colour_manual(name = "", values = names(mycol),labels = mycol) + #自定义散点颜色
+    scale_x_continuous(limits = c(-5, 5),
+                       breaks= seq(-5, 5, by = 2)) + #x轴限制
+    scale_y_continuous(expand = expansion(add = c(0.5, 1)))+
+    geom_hline(yintercept = c(-log10(0.05)),linewidth = 0.7,color = "grey40",lty = "dashed") + #水平阈值线
+    geom_vline(xintercept = c(-1.5, 1.5),linewidth = 0.7,color = "grey40",lty = "dashed") + #垂直阈值线
+    theme_classic() +
+    theme(axis.title = element_text(size = 15),
+          axis.text = element_text(size = 14),
+          legend.text = element_text(size = 14),
+          plot.margin = margin(15,5.5,5.5,5.5),
+          plot.background = element_rect(fill="white", colour=NA),  # 设置白色背景，无边框线
+          panel.border = element_blank(),  # 移除边框线
+          panel.grid.major = element_blank(),  # 移除主要网格线
+          panel.grid.minor = element_blank());p
+
+  p1 <- p +
+    geom_point(data = si_top20, aes(x = log2FoldChange, y = -log10(padj),color = color1), size = 3,alpha = 0.8) +
+    geom_text_repel(data = no_top20, aes(x = log2FoldChange, y = -log10(padj),label = Gene_shortname), size = 3);p1
+
+  p2 <- p1 +
+    geom_point(data = no_top20, aes(x = log2FoldChange, y = -log10(padj),color = color1), size = 3,alpha = 0.8) +
+    geom_text_repel(data = si_top20, aes(x = log2FoldChange, y = -log10(padj),label = Gene_shortname), size = 3);p2
+
+
+ggsave(filename = "./AC差异gene.pdf",
+       width = 20,
+       height = 10,
+       device = "pdf")
+ 
+write.csv(top20,"./CvsA差异gene分析.csv")

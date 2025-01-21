@@ -1,0 +1,3 @@
+aa <- read.csv("../RNA_data_process/RNA/00491503-ef30-46e9-bb5e-bfb460e33554/7629051c-9c15-4cb2-bfaa-60d88a9c85fa.rna_seq.augmented_star_gene_counts.tsv",
+               sep = "\t",)
+  

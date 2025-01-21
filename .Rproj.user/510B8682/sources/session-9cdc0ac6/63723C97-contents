@@ -1,0 +1,147 @@
+rm(list = ls())
+
+# 读取所有RNA bio文件，并按照sample type 分组
+RNA_sample_sheet <- read.csv("./RNA_gdc_sample_sheet.2023-08-25.tsv",sep = '\t',header = TRUE)
+RNA_sample_sheet$Case.ID <- sub(",.*","",RNA_sample_sheet$Case.ID)
+RNA_sample_sheet$Sample.Type <- sub(",.*","",RNA_sample_sheet$Sample.Type)
+#按照sample type分组
+RNA_sample_tumor <- RNA_sample_sheet[RNA_sample_sheet$Sample.Type == "Primary Tumor",]
+RNA_sample_normal <- RNA_sample_sheet[RNA_sample_sheet$Sample.Type == "Solid Tissue Normal",]
+
+
+# pattern参数筛选出文件名中包含“gene_count.tsv的文件” ，recursive = TRUE表示在子目录中也搜索匹配文件
+count_file <- list.files('./RNA',pattern = '*gene_counts.tsv$',recursive = TRUE) 
+# 将文件名按照/进行分割，得到一个列表，其中每个元素是由文件名的各部分组成的向量
+count_file_name <- strsplit(count_file,split = '/')
+# 利用sapply函数对上述得到的每个向量进行处理，提取第二个元素，即文件名部分。结果将会得到一个包含所有文件名的字符向量“count_file_name”
+count_file_name <- sapply(count_file_name, function(x){x[2]})
+
+path0 = paste0('./RNA//',count_file[1])
+data0<- read.delim(path0,fill = TRUE,header = FALSE,row.names = 1)
+colnames(data0)<-data0[2,]
+data1<-data0[-c(1:6),]
+matrix0 <- data1[,c(1,2)] # 保留genetype列
+
+#先把所有文件都读进来，存放到列表中
+RNA_list <- list()
+for (i in 1:length(count_file_name)){
+  path = paste0('./RNA/',count_file[i])
+  data <- read.delim(path,fill = TRUE,header = FALSE,row.names = 1)# 读取文件中的数据，如果某行数据缺少列，则用空值填充；无列名，第一列为行名
+  RNA_list[[i]] <- data
+  names(RNA_list)[i] <- count_file_name[i]
+  }# 每个读进去的文件都有60666行
+  
+for (i in 1:length(RNA_list)){
+  data <- RNA_list[[i]]
+  data <- data[-c(1:6),] #去掉前6行的注释信息
+  data <- data[,6] # 取出tpm_unstranded列
+  matrix0 <- cbind(matrix0,data)
+}# 2532列
+colnames(matrix0)[3:2534] <- names(RNA_list)
+# 只保留gene_type为protein coding的行
+matrix0 <- matrix0[matrix0$gene_type == "protein_coding",] #19962行
+RNA_normal <- matrix0[,colnames(matrix0) %in% RNA_sample_normal$File.Name] #641
+colnames(RNA_normal) <- RNA_sample_normal$Case.ID[match(colnames(RNA_normal),RNA_sample_normal$File.Name)]
+
+RNA_tumor <- matrix0[,colnames(matrix0) %in% RNA_sample_tumor$File.Name] # 1981
+colnames(RNA_tumor) <- RNA_sample_tumor$Case.ID[match(colnames(RNA_tumor),RNA_sample_tumor$File.Name)]
+
+
+meanvalue <- function(data) {
+  f <- table(colnames(data))
+  g <- names(f)[f>1]
+  # 遍历重复列名并计算均值
+  for (x in g) {
+    col_indices <- which(colnames(data) == x)
+    mean_values <- rowMeans(data[, col_indices],na.rm = TRUE)
+    
+    #合并矩阵，并给新列命名
+    data <- cbind(data,mean_values)
+    colnames(data)[grep('_value',colnames(data))] <- paste0(x,"_mean")
+  }
+  # 从矩阵中删除重复列名列
+  data <- data[,!colnames(data) %in% g]
+}
+
+RNAT <- apply(RNA_tumor,c(1,2),as.numeric)
+RNAT <- meanvalue(RNAT)
+colnames(RNAT) <- sub("_mean","",colnames(RNAT))
+write.csv(RNAT,file = "./RNAT.csv")#1507
+
+RNAN <- apply(RNA_normal,c(1,2),as.numeric)
+RNAN <- meanvalue(RNAN)
+colnames(RNAN) <- sub("_mean","",colnames(RNAN))
+write.csv(RNAN,file = "./RNAN.csv") # 634
+
+
+
+# 读取所有蛋白质标准化后的文件列名，检查是否有重复值
+pro_file <- list.files(path = "../proteome_data_process/Proteomics Nor Data/",pattern = ".csv") # 33个文件
+#把所有文件的列名及其对应的study做成一个数据框
+pro_col <- data.frame()
+for(i in 1:length(pro_file)){
+  path <- paste0("../proteome_data_process/Proteomics Nor Data/",pro_file[i])
+  data <- t(read.csv(path,header = FALSE,nrows = 1,check.names = FALSE))
+  data <- as.data.frame(data)
+  data[,2] <- sub(".csv","",pro_file[i])
+  pro_col <- rbind(pro_col,data)
+} #3006
+
+# 去掉含有NA值的行
+pro_col <- pro_col[complete.cases(pro_col),] #2975
+colnames(pro_col) <- c("Case ID","Study name")
+
+# tumor & normal
+pro_col_tumor <- pro_col[grep(".*tumor.*",pro_col$`Study name`),] #2083 #重复出现的ID都是以数字为列名的
+pro_col_normal <- pro_col[grep(".*normal.*",pro_col$`Study name`),] #892  没有重名ID
+
+#将tumor和normal分别比对
+rna_normal <- as.data.frame(colnames(RNAN)) #634
+rna_normal[,2] <- "normal"
+colnames(rna_normal) <- c("Case ID","type")
+
+rna_tumor <- as.data.frame(colnames(RNAT)) #1507
+rna_tumor[,2] <- "tumor"
+colnames(rna_tumor) <- c("Case ID","type")
+
+
+
+pro_rna_tumor <- merge(pro_col_tumor,rna_tumor,by = "Case ID") #1066
+pro_rna_normal <- merge(pro_col_normal,rna_normal,by = "Case ID") #367
+
+
+# 写一个函数，实现
+listrnat <- unique(pro_rna_tumor$`Study name`) #10个study
+listrnan <- unique(pro_rna_normal$`Study name`) # 7个study
+
+for(i in listrnan){
+  caseid <- pro_rna_normal$`Case ID`[pro_rna_normal$`Study name` == i]
+  path = paste0("./RNA_tidy_data/",sub("pro","rna",i),".csv")
+  data <- RNAN[,colnames(RNAN) %in% caseid]
+  data <- cbind(matrix0[,1],data)
+  write.csv(data,path)
+}
+
+for(i in listrnat){
+  caseid <- pro_rna_tumor$`Case ID`[pro_rna_tumor$`Study name` == i]
+  path = paste0("./RNA_tidy_data/",sub("pro","rna",i),".csv")
+  data <- RNAT[,colnames(RNAT) %in% caseid]
+  data <- cbind(matrix0[,1],data)
+  write.csv(data,path)
+}
+
+pr_tumor_all <- merge(pro_col_tumor,rna_tumor,by = "Case ID",all = TRUE) ;write.csv(pr_tumor_all,"./pr_tumor_all.csv")
+pr_normal_all <- merge(pro_col_normal,rna_normal,by = "Case ID",all = TRUE); write.csv(pr_normal_all,"./pr_normal_all.csv")
+
+rm(list = ls())
+
+# # 后来又找到PDC000109的蛋白质组数据，来自linkedomics，直接读入所有RNAT.csv文件和RNAN.csv文件
+# # 经验证，没有normal的RNA数据
+# RNAT <- read.csv("./RNAT.csv",sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+# 
+# PDC109_tumor <- read.csv("../proteome_data_process/Proteomics Nor Data/PDC000109_pro_tumor_nor.csv",
+#                          sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+# PDC109_RNA_tumor <- RNAT[,intersect(colnames(PDC109_tumor),colnames(RNAT))] #96
+# write.csv(PDC109_RNA_tumor,"./RNA_NOR/PDC000109_rna_tumor_nor.csv")
+# 后来又发现109和116来源于同一组数据，所以又注释掉了，尴尬，还浪费了我好多时间
+

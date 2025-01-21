@@ -1,0 +1,24 @@
+m <- m[order(m$p.value), ]
+label_df <- head(m, 10)
+
+library(ggplot2)
+p <- ggplot(m, aes(x = log2FC, y = negLog10P)) +
+  geom_point(aes(color = color_group)) +
+  # 使用 scale_color_identity 直接使用已有的颜色名称
+  scale_color_identity() +
+  theme_bw(base_size = 14) +
+  labs(
+    title = paste0("Volcano Plot for ", "cancer.type"),
+    x = "log2(FC)",
+    y = "-log10(p-value)"
+  ) +
+  # 若想区分 legend，可自行改成 fill=..., or color=... + scale_color_manual()
+  theme(legend.position = "none")
+
+# 标注前 top.gene
+p <- p +
+  geom_text(data = label_df,
+            aes(label = gene),
+            color = "black",
+            size = 3,
+            vjust = -0.5)

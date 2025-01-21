@@ -1,0 +1,39 @@
+rm(list = ls())
+# 将所有处理好的转录组文件读取进来并存放在一个列表中
+rnalist<-list.files(path="./RNA_tidy_data_unique/",pattern="\\.csv$")
+rna <- list() 
+
+for(i in 1:length(rnalist)){
+  x <- rnalist[i]
+  y <- read.csv(file = paste0("./RNA_tidy_data_unique/",x,sep = ""),
+                sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+  rna[[i]] <- y
+  names(rna)[i] <-x 
+}
+
+# 定义标准化函数----
+# 先对列用，实现样本内标准化，再对行用，实现样本间的标准化，到时候用的时候，这个函数可以用2次
+normalization <- function(x) {
+  median_val <- median(na.omit(x))  # 计算中位数
+  sd_val <- sd(na.omit(x))  # 计算标准差
+  result <- (x - median_val) / sd_val  # 计算结果
+  return(result)
+}
+
+# 对列表中的所有转录组矩阵数据进项标准化
+rna_nor_list <- list()
+for (i in 1:length(rna)){
+  n <- sub('\\.csv',"",names(rna[i])) # 不带.csv后缀的名字
+  path <- paste0("./RNA_NOR_data/",n,"_nor.csv") #存储路径及_nor(代表是标准化过的)
+  #依次对列表中的数据框进行处理
+  x <- rna[[i]]
+  y <- apply(x, 2, normalization)
+  z <- t(apply(y,1,normalization))
+  #将标准化好的数据存储在新的列表里，并输出为csv文件
+  rna_nor_list[[i]] <- z
+  names(rna_nor_list)[i] <- n
+  write.csv(z,path)
+}
+
+
+

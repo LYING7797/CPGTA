@@ -1,0 +1,159 @@
+cptic <- function(cancer.type, data.category) {
+  # 检查是否提供了所有参数
+  if (missing(cancer.type) || missing(data.category)) {
+    stop("Error: Both 'cancer.type' and 'data.category' parameters are required.")
+  }
+  
+  # 加载必要的包
+  if (!requireNamespace("utils", quietly = TRUE)) {
+    stop("Error: The 'utils' package is required but not installed.")
+  }
+  
+  # 定义文件路径
+  info_file <- "cancer-PDC info.csv"
+  alltumor_file <- "alltumor.csv"
+  tme_folder <- "TME"
+  
+  # 检查文件是否存在
+  if (!file.exists(info_file)) {
+    stop(paste("Error: The file", info_file, "does not exist in the working directory."))
+  }
+  
+  if (!file.exists(alltumor_file)) {
+    stop(paste("Error: The file", alltumor_file, "does not exist in the working directory."))
+  }
+  
+  # 读取 cancer-PDC info.csv 文件
+  cancer_info <- tryCatch({
+    utils::read.csv(info_file, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop("Error: Unable to read 'cancer-PDC info.csv'. Please check the file format.")
+  })
+  
+  # 检查必要的列是否存在
+  required_columns_info <- c("cancer.type", "cancer.type.abbreviation", "PDC_RNA", "PDC_Pro")
+  if (!all(required_columns_info %in% colnames(cancer_info))) {
+    stop(paste("Error: The file", info_file, "must contain the following columns:",
+               paste(required_columns_info, collapse = ", ")))
+  }
+  
+  # 创建有效的癌症类型向量
+  valid_cancer_types <- unique(c(cancer_info$cancer.type, cancer_info$cancer.type.abbreviation))
+  
+  # 验证 cancer.type 输入
+  if (!(cancer.type %in% valid_cancer_types)) {
+    stop(paste("Error: 'cancer.type' must be one of the following:",
+               paste(valid_cancer_types, collapse = ", ")))
+  }
+  
+  # 定义有效的组学类型
+  valid_data_categories <- c("Transcriptome", "Proteome")
+  
+  # 验证 data.category 输入
+  if (!(data.category %in% valid_data_categories)) {
+    stop("Error: 'data.category' must be either 'Transcriptome' or 'Proteome'.")
+  }
+  
+  # 读取 alltumor.csv 文件
+  alltumor_data <- tryCatch({
+    utils::read.csv(alltumor_file, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop("Error: Unable to read 'alltumor.csv'. Please check the file format.")
+  })
+  
+  # 根据 data.category 获取 PDC 列和分类文件
+  if (data.category == "Transcriptome") {
+    pdc_column <- "PDC-RNA"  # 假设 'PDC-RNA' 列名
+    pdc_info_column <- "PDC_RNA"
+    data_file <- file.path(tme_folder, "classified_samples_rna.tsv")
+  } else { # Proteome
+    pdc_column <- "PDC-Pro"  # 假设 'PDC-Pro' 列名
+    pdc_info_column <- "PDC_Pro"
+    data_file <- file.path(tme_folder, "classified_samples_pro.tsv")
+  }
+  
+  # 修改部分：检查样本列是否存在，并给出英文报错信息
+  if (!(pdc_info_column %in% colnames(cancer_info))) {
+    if (data.category == "Proteome") {
+      stop("Error: There are currently no proteomic TME classification results available for this cancer type.")
+    } else if (data.category == "Transcriptome") {
+      stop("Error: There are currently no transcriptomic TME classification results available for this cancer type.")
+    }
+  }
+  
+  # 根据 cancer.type 获取所有相关的 PDC_ID
+  relevant_pdc_ids <- cancer_info[cancer_info$cancer.type == cancer.type | 
+                                    cancer_info$cancer.type.abbreviation == cancer.type, 
+                                  pdc_info_column]
+  
+  # 去除 NA 并确保 PDC_IDs 为字符类型
+  relevant_pdc_ids <- na.omit(as.character(relevant_pdc_ids))
+  
+  if (length(relevant_pdc_ids) == 0) {
+    stop("Error: No PDC IDs found for the specified cancer type in 'cancer-PDC info.csv'.")
+  }
+  
+  # 检查 alltumor_data 是否包含所需的 PDC 列
+  if (!(pdc_column %in% colnames(alltumor_data))) {
+    stop(paste("Error: The 'alltumor.csv' file does not contain the column", pdc_column, "."))
+  }
+  
+  # 获取与 PDC_IDs 对应的样本名
+  sample_names <- alltumor_data[alltumor_data[[pdc_column]] %in% relevant_pdc_ids, "Sample"]
+  
+  # 去除 NA 并确保样本名为字符类型
+  sample_names <- na.omit(as.character(sample_names))
+  
+  if (length(sample_names) == 0) {
+    stop("Error: No sample names found corresponding to the specified PDC IDs in 'alltumor.csv'.")
+  }
+  
+  # 检查分类文件是否存在
+  if (!file.exists(data_file)) {
+    stop(paste("Error: The file", data_file, "does not exist."))
+  }
+  
+  # 读取分类数据
+  classification_data <- tryCatch({
+    utils::read.delim(data_file, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop(paste("Error: Unable to read", data_file, ". Please check the file format."))
+  })
+  
+  # 假设分类数据中有一个 'Sample' 列用于样本名
+  if (!("Sample" %in% colnames(classification_data))) {
+    stop(paste("Error: The file", data_file, "must contain a 'Sample' column."))
+  }
+  
+  # 过滤分类数据以仅包含指定的样本
+  filtered_classification <- classification_data[classification_data$Sample %in% sample_names, ]
+  
+  # 检查是否有样本被过滤
+  if (nrow(filtered_classification) == 0) {
+    warning("Warning: No matching samples found in the classification data.")
+    return(filtered_classification)
+  }
+  
+  # 返回分类结果
+  return(filtered_classification)
+}
+
+### **函数说明**
+
+`cptic` 函数根据指定的癌症类型和组学类型，对肿瘤样本进行免疫亚型分类。该函数结合 `cancer-PDC info.csv`、`alltumor.csv` 和分类结果文件，返回符合条件的样本分类结果矩阵。
+
+### **参数**
+
+- `cancer.type`：指定的癌种。必须是 `cancer-PDC info.csv` 文件中 `cancer.type` 或 `cancer.type.abbreviation` 列的值之一。
+- `data.category`：组学类型，必须为 `"Transcriptome"` 或 `"Proteome"`。
+
+### **使用示例**
+
+```r
+# 示例1：使用转录组数据对乳腺癌进行分类
+result1 <- cptic(cancer.type = "Breast Cancer", data.category = "Transcriptome")
+print(result1)
+
+# 示例2：使用蛋白质组数据对 BRCA 进行分类（假设 BRCA 是乳腺癌的缩写）
+result2 <- cptic(cancer.type = "BRCA", data.category = "Proteome")
+print(result2)

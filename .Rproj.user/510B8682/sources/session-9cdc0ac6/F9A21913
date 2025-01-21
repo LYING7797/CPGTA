@@ -1,0 +1,27 @@
+{
+    "id": "F9A21913",
+    "path": "~/cptac_multiomics_data/CPGTA/R/cptod.R",
+    "project_path": "R/cptod.R",
+    "type": "r_source",
+    "hash": "666974881",
+    "contents": "",
+    "dirty": false,
+    "created": 1737041565941.0,
+    "source_on_save": false,
+    "relative_order": 9,
+    "properties": {
+        "tempName": "Untitled2",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "182,0",
+        "scrollLine": "151"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1737359643,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1737359643858,
+    "read_only": false,
+    "read_only_alternatives": []
+}

@@ -1,0 +1,52 @@
+相关性函数
+
+已知文件夹结构如下：
+
+Transcriptome
+
+        -文件名示例：PDC000113_rna_tumor_tidy.csv(Harmonized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为tumor)
+
+        -文件名示例：PDC000113_rna_normal_nor.csv(Normalized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为normal tissue)
+    -Counts_data
+    	--文件名示例：PDC000113_rna_normal.csv
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为normal tissue)
+Proteome
+        -文件名示例：PDC000113_pro_tumor_tidy.csv(Harmonized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为tumor)
+        -文件名示例：PDC000113_pro_normal_nor.csv(Normalized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为normal tissue)
+
+Phosphoproteome（同Proteome）
+        -文件名示例：PDC000113_phos_tumor_tidy.csv(Harmonized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为tumor)
+
+        -文件名示例：PDC000113_phos_normal_nor.csv(Normalized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为normal tissue)
+
+在上述文件夹结构下，我想用R语言实现一个计算相关性的函数
+函数参数：
+函数的参数如下：gene.name, cancer.type（包括泛癌 pan cancer或指定的癌种）
+data.category(计算哪两种组学之间的相关性)
+
+
+	特定癌种
+		选定gene
+		cancer.type 为 cancer-PDC info.csv文件中cancer type和cancer type abbreviation列的值
+		直接给出所有T-N转录组-蛋白质组相关性（可视化箱线图）
+		下方给T,N中的两种组学间的相关性数值
+
+
+
+1.所有参数都是必须的
+2.gene目前没有默认范围，先计算指定癌种的所有gene的相关性，计算完之后再从装挑选指定gene的相关性结果并以箱线图的形式来展示
+3.cancer.type的默认范围是cancer-PDC info.csv文件中cancer type和cancer type abbreviation列的值
+4.data.category的默认范围是Transcriptome，Proteome，Phosphoproteome，这个参数需要同时输入两个值如（Transcriptome，Proteome）才能确定计算哪两个组学之间的相关性
+5.都只读取Normalized文件夹下的文件进行相关性计算
+6.输入参数缺少的，给出报错信息
+7.输入参数不在默认范围内的，给出报错信息
+8.在计算相关性的过程中，不同组织类型的相关性分开计算（即计算肿瘤组织数据的不同组学的相关性或计算正常组织数据的不同组学之间的相关性），要是缺少正常组织的数据，即可不计算正常组织的相关性
+
+
+

@@ -1,0 +1,445 @@
+# 为了验证泛癌高表达高相关与生存的关系
+# 这里应该保证用泛癌中高表达的gene,再从中筛选出高相关gene,作为一组panel
+# 所以这里用
+# 1，有生存数据
+# 2，有正常组织和肿瘤组织的蛋白质组数据
+
+library(readr)
+library(dplyr)
+library(tidyverse)
+library("pheatmap")
+library("RColorBrewer")
+library(survival)
+library(survminer)
+library(limma)
+
+# 生存数据筛选----
+csv_files <- list.files(path = "../clinical data/", pattern = "\\.csv$", full.names = TRUE)
+data_list <- lapply(csv_files, read_csv)
+names(data_list) <- sapply(csv_files, function(x) tools::file_path_sans_ext(basename(x)))
+
+
+# 先对processed_data_list应用之前的处理
+processed_data_list <- lapply(seq_along(data_list), function(x) {
+  df <- data_list[[x]][, c("Cases Submitter ID", "Cause of Death", "Days to Death", "Vital Status","Days to Last Follow Up","Days to Last Known Disease Status")]
+  df$DataFrameName <- names(data_list)[[x]]
+  return(df)
+})
+
+# 过滤满足所有条件的数据框
+filtered_data_list <- Filter(function(df) {
+  # 检查除了NA之外Vital Status有多少种不同的值
+  unique_statuses <- unique(na.omit(df$`Vital Status`))
+  all_days_to_death_na <- all(is.na(df$`Days to Death`))
+  
+  # 检查条件：不只一种Vital Status类型，不全是"Not Report"，且"Days to Death"不全为NA
+  length(unique_statuses) > 1 && !(length(unique_statuses) == 1 && unique_statuses[1] == "Not Report") && !all_days_to_death_na
+}, processed_data_list)
+
+
+clinical_df <- do.call(rbind, filtered_data_list) # 1111
+clinical_df1 <- subset(clinical_df, !is.na(`Vital Status`) & (`Vital Status` == "Alive" | `Vital Status` == "Dead")) #1013
+clinical_df1$`Vital Status` <- ifelse(clinical_df1$`Vital Status`  == 'Dead',1,0)
+
+
+
+
+# 再筛选同时有肿瘤组织(有蛋白质组数据和转录组数据)和NAT组织数据的study,针对这6个癌种找泛癌差异蛋白----
+metadata <- read.delim("../pan-cancer metadata.csv",sep = ",",header = TRUE,check.names = FALSE,na.strings = c("","NA"))
+metadata <- metadata[-20,]
+TN_data <- metadata[complete.cases(metadata$`Tumor pro`,metadata$`NAT pro`,metadata$`Tumor RNA`),]
+TN_data <- TN_data[-8,]
+TNlist <- TN_data$`proteome-PDC study identifier`
+
+finalPDC <- intersect(unique(clinical_df1$DataFrameName),TNlist) # 6个study
+
+# 用蛋白质经标准化的数据
+tupro <- data.frame()
+for (i in finalPDC) {
+  path <- paste0('../proteome_data_process/Proteomics tidy Data log2(x+0.001)/',i,"_pro_tumor.csv")
+  data <- read.delim(path,sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+  tupro <- merge(data,tupro,by = "row.names",all = TRUE)
+  rownames(tupro) <- tupro[,1]
+  tupro <- tupro[,-1]
+}
+
+norpro <- data.frame()
+for (i in finalPDC) {
+  path <- paste0('../proteome_data_process/Proteomics tidy Data log2(x+0.001)/',i,"_pro_normal.csv")
+  data <- read.delim(path,sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+  norpro <- merge(data,norpro,by = "row.names",all = TRUE)
+  rownames(norpro) <- norpro[,1]
+  norpro <- norpro[,-1]
+} 
+
+rows_remain_t <- which(rowSums(is.na(tupro)) < ncol(tupro)*0.5)
+tupro_1 <- tupro[rows_remain_t, ] #10398*659
+
+rows_remain_n <- which(rowSums(is.na(norpro)) < ncol(norpro)*0.5)
+norpro_1 <- norpro[rows_remain_n,] #10674*418
+
+cogene <- intersect(rownames(tupro_1),rownames(norpro_1)) # 9995
+tupro_1 <- normalizeBetweenArrays(tupro_1[cogene,])
+norpro_1 <- normalizeBetweenArrays(norpro_1[cogene,])
+dfpan <- cbind(tupro_1,norpro_1)
+
+# 对每一行的数据执行统计检验，并将结果存储在一个数据框中
+# 对数据框的每一行应用一个函数，在这个函数中，首先创建一个因子变量a,表示"Tumor"和"Normal"两个水平，然后进行方差检验来比较两个样本的方差是否显著不同
+# 根据方差检验的P值，如果p值大于0.05，就执行等方差的t检验，否则执行不等方差的t检验
+pvalue <- apply(dfpan, 1, function(x){
+  a <- factor(c(rep("Tumor",ncol(tupro_1)), rep("Normal",ncol(norpro_1))))
+  fvalue <- var.test(x~a) # 计算因变量在不同水平的自变量a下的方差是否显著不同，执行F检验以比较两个样本与正常总体的方差
+  if (fvalue$p.value > 0.05){
+    t.test(x~a, var.equal = T)
+  }else{
+    t.test(x~a, var.equal = F)
+  }
+})
+
+pan_t_test <- data.frame(ID = row.names(dfpan), 
+                         Pvalue = as.numeric(unlist(lapply(pvalue, function(x) x$p.value))),
+                         log2FC = as.numeric(unlist(lapply(pvalue, function(x) x$estimate[2]-x$estimate[1]))))
+pan_t_test$Padjust <- p.adjust(pan_t_test$Pvalue)
+
+pan_t_test$group <- case_when(
+  pan_t_test$log2FC > 1.5 & pan_t_test$Pvalue < 0.05 ~ "up",
+  pan_t_test$log2FC < -1.5 & pan_t_test$Pvalue < 0.05 ~ "down",
+  TRUE~ 'none'
+)
+pan_t_test$'-log10(pvalue)' <- -log10(pan_t_test$Pvalue) #新增-log10p列
+pan_t_test$group <- factor(pan_t_test$group, levels = c( "up", "down", "none"))
+pan_t_test <- pan_t_test[!(pan_t_test$Pvalue == "0"),]
+
+
+
+# 高相关性gene聚类----
+# 要先计算这些study中T中转录组与蛋白质组相关性，然后再用相关数据进行聚类找出高相关性gene cluster
+# 用蛋白质的经行和列标准化的数据进行标准化
+pro_tumor <- list()
+for (i in 1:length(finalPDC)) {
+  path <- paste0('../proteome_data_process/Proteomics Nor Data/',finalPDC[i],"_pro_tumor_nor.csv")
+  data <- read.delim(path,sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+  pro_tumor[[i]] <- data
+  names(pro_tumor)[i] <- finalPDC[i]
+} 
+rna_tumor <- list()
+for (i in 1:length(finalPDC)) {
+  path <- paste0('../RNA_data_process/RNA_NOR_data/',finalPDC[i],"_rna_tumor_nor.csv")
+  data <- read.delim(path,sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+  rna_tumor[[i]] <- data
+  names(rna_tumor)[i] <- finalPDC[i]
+} 
+
+cor_p <- function(x){
+  pro <- pro_tumor[[x]] 
+  rna <- rna_tumor[[x]] 
+  corow <- intersect(rownames(pro),rownames(rna)) 
+  cocol <- intersect(colnames(pro),colnames(rna)) 
+  pro_1 <- pro[corow,cocol]
+  rna_1 <- rna[corow,cocol]
+  pro_1 <- apply(pro_1,c(1,2),as.numeric)
+  rna_1 <- apply(rna_1,c(1,2),as.numeric)
+  
+
+  df <- data.frame(corow)
+  for (i in 1:length(corow)){
+    pro <- t(pro_1)[,i]
+    rna <- t(rna_1)[,i]
+    test <- cor.test(pro,rna,method="pearson")
+    df[i,2] <- test$estimate 
+    df[i,3] <- test$p.value  
+    df[i,4] <- test$statistic 
+  }
+  
+  names(df) <- c("symbol","correlation","pvalue","t-test")
+  PDC <- rep(x, nrow(df))
+  cancer_type <- rep(TN_data$cancer[match(x,TN_data$`proteome-PDC study identifier`)],nrow(df))
+  df <- cbind(df,PDC)
+  df <- cbind(df,cancer_type)
+  return(df)
+}
+
+# 循环单个癌种study进行cor.test
+
+cor_df <- data.frame()
+for (i in finalPDC){
+  a <- cor_p(i)
+  cor_df <- rbind(a,cor_df)
+}
+
+
+cor_df1 <- cor_df[,c(1,2,5)]
+rownames(cor_df1) <- cor_df[,1]
+
+
+df1 <- cor_df1 %>%
+  spread(cancer_type, correlation)%>%
+  na.omit()
+
+rownames(df1) <- df1[,1]
+df1 <- df1[,-1]
+df1 <- apply(df1,c(1,2),as.numeric)
+
+
+kmeans_result <- kmeans(df1, centers = 4)
+# 获取每个样本所属的簇
+cluster_labels <- kmeans_result$cluster
+df1_cluster <- as.data.frame(cbind(df1, cluster = cluster_labels))
+
+# 根据cluster列对数据矩阵进行排序
+sorted_data <- df1_cluster[order(df1_cluster$cluster), ]
+data = as.matrix(sorted_data[, -ncol(sorted_data)])
+
+# pdf("./PLOT1/heatmap1.pdf",width = 7,height = 18)
+set.seed(7)
+p1 <- pheatmap(data, # 移除cluster列
+               cluster_rows = T, cluster_cols = T,
+               cutree_rows = 4,cutree_cols = NA,
+               show_rownames = F,
+               show_colnames = T,
+               Rowv = FALSE, # 不显示聚类树
+               Colv = FALSE,   # 不显示列聚类
+               # main = "K-Means Clustering Heatmap", 
+               scale = "none", 
+               margins = c(5, 5), 
+               color = colorRampPalette(c("#4091cf","white","#e1703c"))(100),
+               breaks = seq(-1, 1, length.out = 101),
+               labRow = FALSE);p1 # 不显示纵坐标
+
+tree_row <- p1$tree_row
+cluster_groups <- cutree(tree_row, k = 4)
+
+genes_in_cluster_4 <- data[cluster_groups == 4,]
+# mean(genes_in_cluster_1) 3969 0.5198784
+# mean(genes_in_cluster_2) 1005 0.2935092
+# mean(genes_in_cluster_3) 277 0.3381628
+# mean(genes_in_cluster_4) 3102   0.1800371
+
+df_high <- as.data.frame(cbind(rownames(genes_in_cluster_1),rowMeans(genes_in_cluster_1)))
+colnames(df_high) <- c("symbol","correlation")
+df_high$correlation <- as.numeric(df_high$correlation)
+
+df_low <- as.data.frame(cbind(rownames(genes_in_cluster_4),rowMeans(genes_in_cluster_4)))
+colnames(df_low) <- c("symbol","correlation")
+df_low$correlation <- as.numeric(df_high$correlation)
+
+
+# 分别将两组gene进行验证
+diffgene6cancer <- intersect(pan_t_test[pan_t_test$group == 'up',]$ID,df_high$symbol) # 70个gene 高相关
+diffgene <- setdiff(pan_t_test[pan_t_test$group == 'up',]$ID,diffgene6cancer) # 109 非高相关,有些样本，这个gene对应的是NA值，则这个样本需要去掉
+
+
+
+# 开始进行表达量比较----
+n <- data.frame()
+t <- data.frame()
+for(i in finalPDC){
+  nn <- read.csv(paste0("../proteome_data_process/Proteomics tidy Data log2(x+0.001)/",i,"_pro_normal.csv"),header = TRUE,sep = ",",check.names = FALSE,row.names = 1)
+  n <- merge(nn,n,by = "row.names",all = TRUE)
+  rownames(n) <- n[,1]
+  n <- n[,-1]
+  tt <- read.csv(paste0("../proteome_data_process/Proteomics tidy Data log2(x+0.001)/",i,"_pro_tumor.csv"),header = TRUE,sep = ",",check.names = FALSE,row.names = 1)
+  t <- merge(tt,t,by = "row.names",all = TRUE)
+  rownames(t) <- t[,1]
+  t <- t[,-1]
+}
+
+# 只保留在50%以上样本中有表达量的gene
+filter_data <- function(data){
+  na_counts <- apply(is.na(data), 1, sum)
+  non_na_counts <- ncol(data) - na_counts
+  rows_to_keep <- non_na_counts >= (ncol(data) * 0.5)
+  filtered_data <- data[rows_to_keep, ]
+}
+filter_t <- filter_data(t)  # 659个样本
+filter_n <- filter_data(n)  # 418个样本
+mean_filter_n <- rowMeans(filter_n,na.rm = TRUE)                                                                                                             
+mean_filter_n <- mean_filter_n[names(mean_filter_n) %in% diffgene6cancer]
+
+filter_t <- filter_t[rownames(filter_t) %in% diffgene6cancer,] # 70个gene
+filter_t <- filter_t[complete.cases(filter_t),]
+
+# 接下来将每个患者的每个gene(52)与N中这52个gene的表达量相比，大则赋值1，小则赋值0
+# 初始化一个与 filter_tt 大小相同的矩阵，与
+result <- matrix(0, nrow = nrow(filter_t), ncol = ncol(filter_t))
+rownames(result) <- rownames(filter_t)
+colnames(result) <- colnames(filter_t)
+
+# 按行名比较，并赋值为1或0
+for (i in 1:nrow(filter_t)) {
+  for (j in 1:ncol(filter_t)) {
+    if (filter_t[i, j] > mean_filter_n[i]) {
+      result[i, j] <- 1
+    } else 
+      result[i, j] <- 0
+    }
+  }
+
+
+m <- as.data.frame(colSums(result))
+
+
+# 生存分析----
+
+clinical <- clinical_df1
+na_and_alive <- is.na(clinical$`Days to Death`) & (clinical$`Vital Status` == 0)
+# 将这些行的Days to Death替换为Days to Last Known Disease Status的值
+clinical$`Days to Death`[na_and_alive] <- clinical$`Days to Last Known Disease Status`[na_and_alive]
+# 删掉研究开始前就死亡的病例
+clinical <- clinical[!clinical$`Days to Death` < 0,] # 642
+clinical_m <- merge(clinical,m,by.x = "Cases Submitter ID",by.y = "row.names",all = FALSE) # 642
+colnames(clinical_m)[8] <- "sum"
+
+# clinical_m$group1 <- ifelse(clinical_m$correlation >= quantile(clinical_m$correlation,0.75) , 'high', 
+                            # ifelse(clinical_m$correlation <= quantile(clinical_m$correlation,0.25),'low',"medium"))
+
+clinical_m$group2 <- ifelse(clinical_m$sum >= max(clinical_m$sum)*0.9,'high',
+                            ifelse(clinical_m$sum <= max(clinical_m$sum)*0.7,'low',"medium"))
+clinical_m <- clinical_m[!clinical_m$group2 == "medium",]
+
+km.by.pro <- survfit(Surv(`Days to Death`, `Vital Status`) ~ group2, data = clinical_m)
+logrank_test <- survdiff(Surv(`Days to Death`, `Vital Status`) ~ group2, data = clinical_m);logrank_test
+# 生成并美化生存曲线图
+p <-  ggsurvplot(km.by.pro, # 拟合对象
+                 data = clinical_m,  # 数据来源
+                 # conf.int = TRUE, # 显示置信区间)
+                 pval = TRUE, # 显示P值
+                 # surv.median.line = "hv",  # 中位生存时间线以水平("h")和垂直("v")线显示
+                 risk.table = TRUE, # 显示风险表
+                 risk.table.height = .25, # 风险表的高度
+                 xlab = "Time in days", # X轴标签
+                 ylab = "Overall Survival Probability", # Y轴标签
+                 legend.title = "", # 不显示图例标题
+                 # legend.labs = c("Female", "Male"), # 图例标签
+                 palette = "hue");p # 使用“hue”调色板
+p$plot+scale_color_manual(values = c( "#e1703c", "#4091cf"))
+ggsave("./PLOT1/泛癌差异表达高相关性gene生存分析.pdf",width = 7,height = 3)
+
+
+
+
+
+
+# 特定癌种这里 我们用特定癌种差异分析得到的差异上调蛋白中的高相关gene(每个study再做相关性分析)再做生存----  
+# 特定癌种先不做了
+# 保证是有生存数据的study
+# 保证同时有肿瘤组织和正常组织的蛋白质组数据
+
+# 首先定义一个差异分析函数
+defunc <- function(atum,anor){
+  dfpro <- cbind(atum,anor)
+  group_list <- factor(c(rep('tumor',ncol(atum)),rep('normal',ncol(anor)))) 
+  design <- model.matrix(~group_list)
+  colnames(design) <- levels(group_list) 
+  rownames(design) <- colnames(dfpro)
+  
+  
+  fit <- lmFit(dfpro, design) # 使用lmFit函数对处理后的对数转换数据框进行线性模型拟合，design矩阵被用来考虑不同组别之间的效应及其他可能的影响
+  # 通过eBayes对先前的线性模型进行贝叶斯估计，以获得更稳健的差异分析结果，参数TRUE表示在估计中考虑趋势信息，提高了对小样本的稳健性
+  fit <- eBayes(fit, trend=TRUE) 
+  # 使用topTable函数从贝叶斯估计后的模型中提取差异分析的结果，
+  # 参数coef=2表示提取与设计矩阵的第二列（对应于"B"组别）相关的差异结果。n=Inf表示提取所有的差异结果。
+  result_limma <- topTable(fit, coef=2,n=Inf)
+  
+  result_limma$group <- case_when(
+    result_limma$logFC > 1.5 & result_limma$P.Value < 0.05 ~ "up",
+    result_limma$logFC < -1.5 & result_limma$P.Value < 0.05 ~ "down",
+    TRUE~ 'none')
+  result_limma$'log10P' <- -log10(result_limma$P.Value) #新增-log10p列
+  result_limma$group <- factor(result_limma$group, levels = c( "up", "down", "none"))
+  result_limma <- result_limma[!(result_limma$P.Value == "0"),]
+  result_limma$ID <- rownames(result_limma)
+  return(result_limma)
+}
+dire <- '../proteome_data_process/Proteomics tidy Data log2(x+0.001)/'
+
+# 定义一个相关性计算函数
+
+sur <- function(x){
+  
+  # 得到正常样本表达量均值为base值
+  nn <- read.csv(paste0("../proteome_data_process/Proteomics tidy Data log2(x+0.001)/",x,"_pro_normal.csv"),header = TRUE,sep = ",",check.names = FALSE,row.names = 1)
+  tt <- read.csv(paste0("../proteome_data_process/Proteomics tidy Data log2(x+0.001)/",x,"_pro_tumor.csv"),header = TRUE,sep = ",",check.names = FALSE,row.names = 1)
+  
+  intergene <- intersect(rownames(nn),rownames(tt))
+  nn <- nn[intergene,]
+  tt <- tt[intergene,]
+  
+  diffpro <-  defunc(tt,nn)
+  #确定特定PDC的差异上调蛋白
+  upgene <- diffpro[diffpro$group == 'up',]$ID
+  diff_gene <- intersect(upgene,df_high$symbol)
+  
+  mean_nn <- rowMeans(nn) # 正常组织中每个基因表达均值
+  mean_nn <- mean_nn[names(mean_nn) %in% diff_gene] # 正常组织中这些gene的表达情况
+  filter_tt <- tt[rownames(tt) %in% diff_gene,] #肿瘤组织中每个患者 这些gene的表达情况
+  
+
+  # 接下来将每个患者的每个gene与N中这些个gene的表达量相比，大则赋值1，小则赋值0
+  # 初始化一个与 filter_tt 大小相同的矩阵，与
+  result <- matrix(0, nrow = nrow(filter_tt), ncol = ncol(filter_tt))
+  rownames(result) <- rownames(filter_tt)
+  colnames(result) <- colnames(filter_tt)
+  
+  # 按行名比较，并赋值为1或0
+  for (i in 1:nrow(filter_tt)) {
+    for (j in 1:ncol(filter_tt)) {
+      if (filter_tt[i, j] > mean_nn[i]) {
+        result[i, j] <- 1
+      } else {
+        result[i, j] <- 0
+      }
+    }
+  }
+  
+  m <- as.data.frame(colSums(result))
+  
+  clinical <- clinical_df1[clinical_df1$DataFrameName == x,]
+  clinical_n <- merge(clinical,m,by.x = "Cases Submitter ID",by.y = "row.names")
+  names(clinical_n)[ncol(clinical_n)] <- "sum"
+  
+  # clinical_n$group2 <- ifelse(clinical_n$sum >= max(clinical_n$sum)*0.9,'high',
+                              # ifelse(clinical_n$sum <= max(clinical_n$sum)*0.5,'low',"medium")) 
+  oo <- (max(clinical_n$sum)-min(clinical_n$sum))/5
+  
+  clinical_n$group2 <- ifelse(clinical_n$sum >= max(clinical_n$sum)- oo,'high',
+                              ifelse(clinical_n$sum <= min(clinical_n$sum) + oo*2,'low',"medium")) 
+  
+  clinical_n <- clinical_n[!clinical_n$group2 == 'medium',]
+  
+  km.by.pro <- survfit(Surv(`Days to Death`, `Vital Status`) ~ group2, data = clinical_n)
+  logrank_test <- survdiff(Surv(`Days to Death`, `Vital Status`) ~ group2, data = clinical_n);logrank_test
+  # 生成并美化生存曲线图
+  p <-  ggsurvplot(km.by.pro, # 拟合对象
+                   data = clinical_n,  # 数据来源
+                   # conf.int = TRUE, # 显示置信区间)
+                   pval = TRUE, # 显示P值
+                   # surv.median.line = "hv",  # 中位生存时间线以水平("h")和垂直("v")线显示
+                   # risk.table = TRUE, # 显示风险表
+                   risk.table.height = .25, # 风险表的高度
+                   xlab = "Time in days", # X轴标签
+                   ylab = "Overall Survival Probability", # Y轴标签
+                   legend.title = "", # 不显示图例标题
+                   # legend.labs = c("Female", "Male"), # 图例标签
+                   palette = "hue");p  # 使用“hue”调色板
+  p$plot+scale_color_manual(values = c( "#e1703c", "#4091cf"))
+  # 返回一个包含两个结果的列表
+  return(list(plot = p, pvalue = logrank_test,clinical_n = clinical_n))
+}
+
+
+P125 <- sur("PDC000125");P125$plot
+P127 <- sur("PDC000127");P127$plot
+P153 <- sur('PDC000153');P153$plot
+
+p204 <- sur('PDC000204');p204$plot # 这个超显著
+
+P234 <- sur("PDC000234");P234$plot
+P270 <- sur("PDC000270");P270$plot
+    
+
+
+
+
+
+                       

@@ -1,0 +1,275 @@
+#PDC000198----
+# rm(list = ls())
+# library(readxl)
+# hcc_bio <- read_xlsx('./RNA_Other/PDC000198/HCC_About the RNA and protein Identifier match.xlsx',skip = 1)
+# # hcc的这个数据是counts数经过上四分位数归一化的
+# hcc_rna <- read.delim("./RNA_Other/PDC000198/HCC_UQ_FPKM.tsv",check.names = FALSE,header = TRUE,row.names = 1)
+# 
+# # 所以现在就是把RNA的文件先分成tumor组和normal组
+# hcc_rna_tumor <- hcc_rna[,colnames(hcc_rna) %in% hcc_bio$`Tumor (T) sample ID...3`]
+# hcc_rna_normal <- hcc_rna[,colnames(hcc_rna) %in% hcc_bio$`Adjacent liver tissue (N) sample ID...4`]
+# 
+# a <- read.csv("../proteome_data_process/Proteomics Biospecimen/PDC000198_biospecimen.csv",sep = ",",header = TRUE,row.names = 1)
+# 
+# colnames(hcc_rna_tumor) <- a$Case.Submitter.ID[match(colnames(hcc_rna_tumor),a$Sample.Submitter.ID)]
+# colnames(hcc_rna_normal) <- a$Case.Submitter.ID[match(colnames(hcc_rna_normal),a$Sample.Submitter.ID)]
+
+
+# 注 经过上四分位数归一化后的矩阵无法倒推出原来的矩阵！！！
+
+
+
+
+#PDC000180----
+rm(list = ls())
+counts180 <- readRDS("./RNA_Other/PDC000180/pbta-gene-counts-rsem-expected_count.stranded.rds",)
+bio180 <- read.csv("./RNA_Other/PDC000180/pbta-histologies.tsv",sep = "\t",header = TRUE)
+bio180rna <- bio180[bio180$experimental_strategy == "RNA-Seq",]
+bio180pro <- read.csv('../proteome_data_process/Proteomics Biospecimen/PDC000180_biospecimen.csv',sep = ",",header = TRUE,check.names = FALSE)
+bio180pro <- bio180pro[bio180pro$`Aliquot Status` == "Qualified",]
+
+merbio180rna <- bio180rna[bio180rna$sample_id %in% bio180pro$`Aliquot Submitter ID`,] #219
+
+rname <- as.vector(counts180[,1])
+
+c180 <- counts180[,colnames(counts180) %in% merbio180rna$Kids_First_Biospecimen_ID] #214
+#首先根据rnabio换列名
+colnames(c180) <- merbio180rna$sample_id[match(colnames(c180),merbio180rna$Kids_First_Biospecimen_ID)]
+
+#根据probio换成case id，这时候就有重复值了
+colnames(c180) <- bio180pro$`Case Submitter ID`[match(colnames(c180),bio180pro$`Aliquot Submitter ID`)] #214/187
+
+rmean <- function(data) {
+  f <- table(colnames(data))
+  g <- names(f)[f>1]
+  # 遍历重复列名并计算均值
+  for (x in g) {
+    col_indices <- which(colnames(data) == x)
+    mean_values <- rowMeans(data[, col_indices],na.rm = TRUE)
+    
+    #合并矩阵，并给新列命名
+    data <- cbind(data,mean_values)
+    colnames(data)[grep('_value',colnames(data))] <- paste0(x,"_mean")
+  }
+  # 从矩阵中删除重复列名列
+  data <- data[,!colnames(data) %in% g]
+}
+
+
+b <- rmean(c180)
+colnames(b) <- sub("_mean","",colnames(b))
+
+c <- sub(".*?_","",rname) #只保留gene
+d <- sub("\\..*?$","",rname) #只保留ENSEMBL ID 
+en_gene_id <- as.data.frame(cbind(c,d))
+t180 <- t(b)
+colnames(t180) <- c
+
+# 对重复列名（gene）求均值的函数
+meanvalue <- function(data) {
+  f <- table(colnames(data))
+  g <- names(f)[f>1]
+  # 遍历重复列名并计算均值
+  for (x in g) {
+    col_indices <- which(colnames(data) == x)
+    mean_values <- rowMeans(data[, col_indices],na.rm = TRUE)
+    
+    #合并矩阵，并给新列命名
+    data <- cbind(data,mean_values)
+    colnames(data)[grep('_value',colnames(data))] <- paste0(x,"_mean")
+  }
+  # 从矩阵中删除重复列名列
+  data <- data[,!colnames(data) %in% g]
+}
+
+PDC180 <- t(meanvalue(t180)) #187
+write.csv(PDC180,"./RNA_counts/PDC000180_rna_tumor_nor.csv")
+
+colnames(t180) <- d
+
+library(biomaRt)
+ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl") #选择数据库和版本
+gene_lengths <- getBM(attributes = c("ensembl_gene_id", "transcript_length"), mart = ensembl) # 获取基因长度的向量
+
+coids <- intersect(gene_lengths$ensembl_gene_id,colnames(t180)) #57586
+
+PDC180_TPM_1 <- t(t180[,coids])
+gene_id <- gene_lengths[match(coids,gene_lengths$ensembl_gene_id),]
+# 检查两者是否完全一致
+# identical(gene_id$ensembl_gene_id,rownames(PDC180_TPM_1)) 返回结果为true
+
+count2tpm <- function(count,efflength = gene_id$transcript_length){
+  RPK <- count/(efflength/1000) #每千碱基reads（reads per kilobase） 长度标准化
+  PMSC_rpk <- sum(RPK)/1e6 # RPK的每百万缩放因子(per million scaling factor) 深度标准化
+  RPK/PMSC_rpk
+}
+
+
+PDC180_TPM_2 <- apply(PDC180_TPM_1,2,count2tpm)
+# 再把行名换成gene名
+genename <- en_gene_id$c[match(rownames(PDC180_TPM_2),en_gene_id$d)] #57586/55944
+PDC180_TPM_2 <- cbind(genename,PDC180_TPM_2)
+
+PDC180_TPM_3 <- t(PDC180_TPM_2)
+colnames(PDC180_TPM_3) <- PDC180_TPM_3[1,]
+PDC180_TPM_3 <- PDC180_TPM_3[-1,]
+PDC180_TPM_4 <- apply(PDC180_TPM_3,c(1,2),as.numeric)
+PDC180_TPM_4 <- meanvalue(PDC180_TPM_4) # 55944
+colnames(PDC180_TPM_4) <- sub("_mean","",colnames(PDC180_TPM_4))
+PDC180_TPM_4 <- t(PDC180_TPM_4)
+write.csv(PDC180_TPM_4,"./RNA_tidy_data_unique/PDC000180_rna_tumor.csv")
+
+  
+# PDC000214----
+rm(list = ls())
+list214 <- as.vector(list.files(path = "./RNA_Other/PDC000214/",pattern = "genes_normalized_results.txt.gz$"))
+
+rna214 <- list() 
+
+for(i in 1:length(list214)){
+  x <- list214[i]
+  y <- read.csv(file = paste0("./RNA_Other/PDC000214/",x,sep = ""),sep = "\t",header = TRUE,row.names = 1,check.names = FALSE)
+  rna214[[i]] <- y
+  names(rna214)[i] <-x
+}
+
+rna214_1 <- do.call(cbind,rna214) # 34908
+colnames(rna214_1) <- list214
+# 将行sum值为0的行删掉
+rna214_2 <- rna214_1[complete.cases(rna214_1),]
+rna214_2 <- rna214_2[rowSums(rna214_2)>0,] #30978
+
+row214 <- rownames(rna214_2) # 30978
+#列名转换成gene name
+
+library(biomaRt)
+### 设置查询数据库和数据集
+ensembl <- useEnsembl(biomart = "genes",   dataset = "hsapiens_gene_ensembl")
+gene_id <- getBM(attributes=c("ensembl_gene_id","external_gene_name"),
+      filters = "ensembl_gene_id",
+      values = row214, mart = ensembl)
+gene_id_1 <- gene_id[apply(gene_id != "",1,all),]  #26621 
+# 有空字符串，即存在没有对应上的gene
+# 而且 ensembl id 有存在一对多的情况
+
+
+rna214_3 <- rna214_2[rownames(rna214_2) %in% gene_id_1[,1],] #26621 
+rna214_3 <- cbind(gene_id_1,rna214_3) # 26621
+# 对于一对多的情况，保留值最大的行，即表达量最高的行，可能是最主要的基因
+rna214_4 <- t(rna214_3)
+colnames(rna214_4) <- rna214_4[2,]
+rna214_4 <- rna214_4[-c(1,2),] #26621
+
+rna214_4 <- apply(rna214_4,c(1,2),as.numeric)
+rmax <- function(data) {
+  f <- table(colnames(data))
+  g <- names(f)[f>1]
+  col <- vector()
+  # 遍历重复列名并计算均值
+  for (x in g) {
+    col_indices <- which(colnames(data) == x)
+    col_means <- colMeans(data[,col_indices])
+    # 找到均值最大的列名的索引
+    max_mean_col <- col_indices[which.max(col_means)]
+    # 把索引放进一个列表里
+    col <- c(col,max_mean_col) 
+    }
+  data1 <- data[,!colnames(data) %in% g]
+  data2 <- cbind(data1,data[,col])
+}
+
+rna214_5 <- t(rmax(rna214_4))
+
+T214 <- rna214_5[,grep("T",colnames(rna214_5))] #80个样本
+N214 <- rna214_5[,grep("N",colnames(rna214_5))] # 80个样本
+
+colnames(T214) <- sub("T.*$","",colnames(T214))
+colnames(T214) <- sub(".*_","",colnames(T214))
+
+colnames(N214) <- sub("N.*$","",colnames(N214))
+colnames(N214) <- sub(".*_","",colnames(N214))
+
+write.csv(T214,"./RNA_counts/PDC000214_rna_tumor.csv")
+write.csv(N214,"./RNA_counts/PDC000214_rna_normal.csv")
+
+
+# 214 counts转TPM
+# 读取counts数据
+t214 <- read.csv("./RNA_counts/PDC000214_rna_tumor.csv",sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+n214 <- read.csv("./RNA_counts/PDC000214_rna_normal.csv",sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+# counts转TPM----
+
+
+
+
+
+# PDC000248----
+rm(list = ls())
+options(scipen = 20)#不要以科学计数法表示
+PDC248 <- read.csv("./RNA_Other/PDC000248",sep = "\t",header = TRUE,check.names = FALSE,row.names = 1) #58288
+
+rsum <- as.vector(rowSums(PDC248))
+loc <- which(rsum == 0)
+PDC248_1 <- PDC248[-loc,]
+colnames(PDC248_1) <- sub("-R","",colnames(PDC248_1)) # 43277
+
+rname <- sub("\\..*?$","",rownames(PDC248_1)) #只保留ENZID,居然也还是有重复值，我真服了,43242
+PDC248_2 <- t(PDC248_1)
+colnames(PDC248_2) <- rname
+
+# 对重复列名（gene）求均值的函数
+meanvalue <- function(data) {
+  f <- table(colnames(data))
+  g <- names(f)[f>1]
+  # 遍历重复列名并计算均值
+  for (x in g) {
+    col_indices <- which(colnames(data) == x)
+    mean_values <- rowMeans(data[, col_indices],na.rm = TRUE)
+    
+    #合并矩阵，并给新列命名
+    data <- cbind(data,mean_values)
+    colnames(data)[grep('_value',colnames(data))] <- paste0(x,"_mean")
+  }
+  # 从矩阵中删除重复列名列
+  data <- data[,!colnames(data) %in% g]
+}
+
+PDC248_3 <- t(meanvalue(PDC248_2))
+
+
+# counts转TPM----
+# 安装和加载必要的包
+library(biomaRt)
+ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl") #选择数据库和版本
+gene_lengths <- getBM(attributes = c("ensembl_gene_id", "transcript_length"), mart = ensembl) # 获取基因长度的向量
+
+coids <- intersect(gene_lengths$ensembl_gene_id,rownames(PDC248_3)) #42662
+
+PDC248_4 <- PDC248_3[coids,]
+gene_id <- gene_lengths[match(coids,gene_lengths$ensembl_gene_id),]
+# 检查两者是否完全一致
+# identical(gene_id$ensembl_gene_id,rownames(PDC248_4)) 返回结果为true
+
+count2tpm <- function(count,efflength = gene_id$transcript_length){
+  RPK <- count/(efflength/1000) #每千碱基reads（reads per kilobase） 长度标准化
+  PMSC_rpk <- sum(RPK)/1e6 # RPK的每百万缩放因子(per million scaling factor) 深度标准化
+  RPK/PMSC_rpk
+}
+
+
+PDC248_TPM <- apply(PDC248_4,2,count2tpm)
+
+#行名换成gene名
+genename <- sub(".*?_","",rownames(PDC248_1))
+gene_en_id <- as.data.frame(cbind(rname,genename)) # 43277
+TPM_genename <- gene_en_id$genename[match(rownames(PDC248_TPM),gene_en_id$rname)] # 42662?42443
+PDC248_TPM <- cbind(TPM_genename,PDC248_TPM) # 42662/42443 有重复基因 求均值去重
+
+PDC248_TPM_1 <- t(PDC248_TPM)
+colnames(PDC248_TPM_1) <- PDC248_TPM_1[1,]
+PDC248_TPM_1 <- PDC248_TPM_1[-1,]
+PDC248_TPM_2 <- apply(PDC248_TPM_1,c(1,2),as.numeric)
+PDC248_TPM_2 <- meanvalue(PDC248_TPM_2) # 42443
+colnames(PDC248_TPM_2) <- sub("_mean","",colnames(PDC248_TPM_2))
+PDC248_TPM_3 <- t(PDC248_TPM_2)
+write.csv(PDC248_TPM_3,"./RNA_tidy_data_unique/PDC000248_rna_tumor.csv")

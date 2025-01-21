@@ -1,0 +1,49 @@
+CPTACquery <- function(cancer.type,
+                       data.category,
+                       PDC.study.identifier = NULL,
+                       data.type = NULL,
+                       sample.type = NULL) {
+  # 加载dplyr库
+  library(dplyr)
+
+  # 根据文件结构，设置基本路径
+  base_path <- "C:/data/"  # 假设数据存放在C:/data/目录下，请根据实际情况修改
+
+  # 创建参数的组合
+  params <- expand.grid(
+    PDC.study.identifier = if (is.null(PDC.study.identifier)) list.files(file.path(base_path, data.category)) else PDC.study.identifier,
+    data.type = if (is.null(data.type)) c('tidy', 'nor') else data.type,
+    sample.type = if (is.null(sample.type)) c('normal', 'tumor') else sample.type,
+    stringsAsFactors = FALSE
+  )
+
+  # 初始化返回的数据列表
+  data_list <- list()
+
+  # 迭代每个参数组合，构造路径并收集数据
+  for (i in 1:nrow(params)) {
+    current_params <- params[i, ]
+
+    # 用参数构造文件名
+    file_name <- paste0(current_params$PDC.study.identifier, "_", current_params$sample.type, "_", current_params$data.type, ".csv")
+
+    # 构建完整的文件路径
+    full_file_path <- file.path(base_path, data.category, current_params$data.type, current_params$PDC.study.identifier, file_name)
+
+    # 如果文件存在就读取数据
+    if (file.exists(full_file_path)) {
+      data_list[[length(data_list) + 1]] <- read.csv(full_file_path)
+    }
+  }
+
+  # 返回收集的数据框列表
+  return(data_list)
+}
+
+# 示例查询
+results_list <- CPTACquery(
+  cancer.type = "Breast Invasive Carcinoma",
+  data.category = "CNV",
+  data.type = "tidy",
+  sample.type = "tumor"
+)

@@ -1,0 +1,160 @@
+
+library(readr)
+library(survival)
+library(survminer)
+
+csv_files <- list.files(path = "../clinical data/", pattern = "\\.csv$", full.names = TRUE)
+data_list <- lapply(csv_files, read_csv)
+names(data_list) <- sapply(csv_files, function(x) tools::file_path_sans_ext(basename(x)))
+
+# 使用lapply遍历列表中的每个数据框
+processed_data_list <- lapply(seq_along(data_list), function(x) {
+  # 仅保留指定的列
+  df <- data_list[[x]][, c("Cases Submitter ID", "Cause of Death", "Days to Death", "Vital Status","Days to Last Known Disease Status")]
+  # 添加一个新列，保存数据框的名称，这里我们简单地用数据框在列表中的位置作为它的名称
+  df$DataFrameName <- names(data_list)[[x]]
+  return(df)
+})
+clidf <- do.call(rbind, processed_data_list) # 2489
+clidf1 <- clidf[!is.na(clidf$`Vital Status`) & (clidf$`Vital Status` == "Alive" | clidf$`Vital Status` =="Dead" ),] # 1534
+
+
+# # 读取所有蛋白质组数据
+metadata <- read.csv("../pan-cancer metadata.csv",sep = ",",header = TRUE,check.names = FALSE)[-20,]
+demetadata <-metadata[metadata$`Tumor pro` != "" & metadata$`NAT pro` != "", ]
+
+# 读取所有肿瘤的蛋白质组数据
+pro_files <- list.files(path = "../proteome_data_process/Proteomics Nor Data/",pattern = "tumor_nor\\.csv$",full.names = TRUE)
+pro_list <- lapply(pro_files,read_csv)
+names(pro_list) <- sapply(pro_files,function(x) tools::file_path_sans_ext(basename(x)))
+names(pro_list) <- sub("_pro_tumor_nor","",names(pro_list))
+
+# 读取所有正常组织的蛋白质组数据
+pro_files_n <- list.files(path = "../proteome_data_process/Proteomics Nor Data/",pattern = "normal_nor\\.csv$",full.names = TRUE)
+pro_list_n <- lapply(pro_files_n,read_csv)
+names(pro_list_n) <- sapply(pro_files_n,function(x) tools::file_path_sans_ext(basename(x)))
+names(pro_list_n) <- sub("_pro_normal_nor","",names(pro_list_n))
+
+
+
+# 筛选出做差异分析的蛋白质组数据及临床数据
+pro_list <- pro_list[names(pro_list) %in% demetadata$`proteome-PDC study identifier`]
+# 将列表中的蛋白质组数据拼接到一个数据框中，首先将第一列命名为ID列
+pro_list <- lapply(pro_list, function(x) {
+  names(x)[1] <- "ID"
+  return(x)
+})
+
+prodf <- Reduce(function(x, y) {
+  merged_df <- merge(x, y, by = "ID", all = TRUE)  # 使用 "ID" 列作为合并依据
+  return(merged_df)
+}, pro_list)
+
+
+
+# 针对三个癌种共享的8个差异上调蛋白做生存分析
+# 与自身normal tisuue蛋白表达量对比后 分为高表达和低表达
+pro8 <- c('GPX8','HK3','IKBIP','MMP14','OAS3','PLOD3','RAC2','TAP2')
+
+proccrcc <- pro_list[["PDC000127"]]
+progbm <- pro_list[['PDC000204']]
+prohnscc <- pro_list[['PDC000221']]
+
+
+
+a <- pro_list[["PDC000221"]]
+colnames(a)[1] <- "gene"
+b <- a[a$gene %in% pro8,]
+
+aa <- pro_list_n[["PDC000221"]]
+colnames(aa)[1] <- "gene"
+bb <- aa[aa$gene %in% pro8,]
+
+binary <- as.data.frame((b[,-1] > rowMeans(bb[,-1])) + 0)
+sumbinary <- colSums(binary)
+
+
+clic <- clidf1[clidf1$`Cases Submitter ID` %in% colnames(b),c("Cases Submitter ID" ,"Cause of Death","Days to Death","Vital Status","Days to Last Known Disease Status")]
+# clic$group <- ifelse(sumbinary[match(clic$`Cases Submitter ID`, names(sumbinary))] >= 7, "up", "down")
+clic$`Vital Status` <- ifelse(clic$`Vital Status` == "Dead", 1, 0)
+
+
+km.by.pro <- survfit(Surv(`Days to Death`, `Vital Status`) ~ group, data = clic)
+ggsurvplot(km.by.pro)
+log_rank_test <- survdiff(Surv(`Days to Death`, `Vital Status`) ~ group, data = clic)
+log_rank_test$pvalue
+
+
+bbb <- t(bb)
+colnames(bbb) <- bbb[1,]
+bbb <- bbb[-1,]
+clicpro <- merge(clic,bbb,by.x = "Cases Submitter ID",by.y = "row.names")
+clicpro$"Vital Status" <- clicpro$"Vital Status" == "Dead"
+clicpro$`Days to Last Known Disease Status` <- as.numeric(clicpro$`Days to Last Known Disease Status`)
+clicpro[,6:13] <- as.numeric(clicpro[,6:13])
+
+#  cox单因素分析和多因素分析都没有显著性，说明筛选到的这几个差异蛋白对生存无显著影响----
+# 创建生存对象
+surv_obj <- Surv(clicpro$"Days to Last Known Disease Status", clicpro$"Vital Status")
+
+
+# 建立单因素 Cox 回归模型
+fit1 <- coxph(surv_obj ~ as.numeric(GPX8), data = clicpro);fit1
+fit2 <- coxph(surv_obj ~ as.numeric(HK3), data = clicpro);fit2
+fit3 <- coxph(surv_obj ~ as.numeric(IKBIP), data = clicpro);fit3
+fit4 <- coxph(surv_obj ~ as.numeric(MMP14), data = clicpro);fit4
+fit5 <- coxph(surv_obj ~ as.numeric(OAS3), data = clicpro);fit5
+fit6 <- coxph(surv_obj ~ as.numeric(PLOD3), data = clicpro);fit6
+fit7 <- coxph(surv_obj ~ as.numeric(RAC2), data = clicpro);fit7
+fit8 <- coxph(surv_obj ~ as.numeric(TAP2), data = clicpro);fit8
+
+
+# 计算P值
+summary(fit1)$coefficients[, "Pr(>|z|)"]
+summary(fit2)$coefficients[, "Pr(>|z|)"]
+# ... 同理，获取其他蛋白质的P值
+
+# 可视化生存曲线
+ggsurvplot(survfit(fit1), data = data, pval = TRUE)
+ggsurvplot(survfit(fit2), data = data, pval = TRUE)
+# ... 同理，绘制其他蛋白质的生存曲线
+
+# 建立多因素 Cox 回归模型
+multi_fit <- coxph(Surv(clicpro$`Days to Last Known Disease Status`,clicpro$`Vital Status`) ~ as.numeric(GPX8) + as.numeric(HK3) + as.numeric(IKBIP) + as.numeric(MMP14) + as.numeric(OAS3) + as.numeric(PLOD3) + as.numeric(RAC2) + as.numeric(TAP2), data = clicpro)
+
+# 使用向前逐步回归法
+step(multi_fit, direction = "forward")
+# ... 使用向后逐步回归法
+
+# 显示模型结果
+summary(multi_fit)
+
+# 可视化生存曲线
+ggsurvplot(survfit(multi_fit), data = clicpro)
+
+
+# 所有蛋白质名称列表
+proteins <- c("GPX8", "HK3", "IKBIP", "MMP14", "OAS3", "PLOD3", "RAC2", "TAP2")
+
+# 循环遍历每个蛋白质
+for (protein in proteins) {
+  # 建立单因素 Cox 回归模型
+  fit <- coxph(surv_obj ~ get(protein), data = clicpro)
+
+  # 绘制生存曲线
+  ggsurvplot(survfit(fit), data = clicpro, pval = TRUE, title = paste("生存曲线:", protein))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+# 鉴定差异蛋白对肿瘤分级有无显著影响
+

@@ -1,0 +1,103 @@
+临床蛋白质组肿瘤差异分析
+
+于对指定癌症类型和指定组学（转录组/蛋白组）进行肿瘤 vs. 正常的差异分析，并绘制火山图。函数在示例中演示了如何：
+
+检查参数合法性（包括必填参数、默认值范围、值类型等）；
+读取 Normalized 文件（肿瘤和正常），并计算差异（log2 Fold Change 和 p 值）；
+根据用户输入的 log2FC 阈值筛选显著差异基因/蛋白；
+绘制火山图（横轴为 log2FC，纵轴为 -log10 p 值），并标注前 top.gene 个点；
+在火山图标题中显示所选择的癌症类型
+
+ 这里就是比较肿瘤组织和正常组织的差异蛋白
+
+  差异gene（转录组）
+  Transcriptome
+
+        -文件名示例：PDC000113_rna_tumor_tidy.csv(Harmonized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为tumor)
+
+        -文件名示例：PDC000113_rna_normal_nor.csv(Normalized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为normal tissue)
+
+
+  差异蛋白(蛋白组)
+  Proteome
+        -文件名示例：PDC000113_pro_tumor_tidy.csv(Harmonized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为tumor)
+        -文件名示例：PDC000113_pro_normal_nor.csv(Normalized)
+        -PDC000113(PDC编号，对应癌种信息），tumor(sample.type为normal tissue)
+
+
+在上述文件夹结构下，我想用R语言实现一个计算相关性的函数
+函数参数：
+函数的参数如下：cancer.type（指定的癌种），data.category(转录组数据还是蛋白质组数据),log2FC值（阈值确定），top.gene(选择标注出前多少个gene)
+
+
+1.所有参数都是必须的
+2.cancer.type的默认范围是cancer-PDC info.csv文件中cancer type和cancer type abbreviation列的值
+3.data.category的默认范围是Transcriptome，Proteome
+4.都只读取Normalized的文件进行差异分析
+5.输入参数缺少的，给出报错信息
+6.输入参数不在默认范围内的，给出报错信息
+7.log2FC输入为数字,最多一位小数
+8.top.gene为整数，不超过20
+
+函数逻辑要点
+参数检查
+
+cancer.type 是否在 cancer-PDC info.csv 的 cancer_type 或 abbreviation 中。
+data.category 是否在 Transcriptome / Proteome 中。
+log2FC 是否 numeric、且最多 1 位小数；根据该值对火山图中的点进行粉色或浅蓝色着色：
+log2FC ≥ 阈值 => pink
+log2FC < 阈值 => lightblue
+top.gene 是否为整数，且不大于 20。
+读取数据
+
+合并所有 PDC code：对于同一个癌症类型，可能会在 cancer-PDC info.csv 中匹配到多个 PDC code。需要将这些 PDC code 对应的文件全部读入并合并。
+只读取 Normalized 文件：肿瘤 _tumor_nor.csv 与正常 _normal_nor.csv。
+合并方式：
+先找这些文件的行名（基因）的交集，保证所有合并的表行名相同；
+然后在列（样本）维度进行合并（cbind）。
+差异分析
+
+使用最简单的行 t.test（tumor vs. normal），得到 p 值；
+计算 log2FC =
+log
+⁡
+2
+(
+mean
+(
+𝑡
+𝑢
+𝑚
+𝑜
+𝑟
+)
+mean
+(
+𝑛
+𝑜
+𝑟
+𝑚
+𝑎
+𝑙
+)
+)
+log
+2
+​
+ (
+mean(normal)
+mean(tumor)
+​
+ )；
+以 p 值和 log2FC 生成结果表。
+绘制火山图
+
+横轴：log2FC；纵轴：-log10(p 值)。
+如果 log2FC >= 阈值，则着色为粉色（pink），否则着色为浅蓝（lightblue）。
+选取 p 值最显著（p 值最小）的前 top.gene 个基因并标注。
+图标题包含癌症类型名称。
+
+

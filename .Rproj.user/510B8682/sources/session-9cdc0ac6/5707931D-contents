@@ -1,0 +1,18 @@
+cptic函数（临床蛋白质组肿瘤免疫亚型分类）：这个功能根据肿瘤样本的免疫学特征进行分类，有助于理解肿瘤微环境。
+
+这个函数的主要作用是针对给出的癌症类型，给出该癌症类型转录组或蛋白质组所有样本的免疫亚型分类结果
+
+函数的参数如下： cancer.type（指定的癌种）data.category(组学类型)
+
+
+
+1.所有参数都是必须的
+2.cancer.type的默认范围是cancer-PDC info.csv文件中cancer type和cancer type abbreviation列的值
+3.data.category的默认范围是Transcriptome或Proteome
+4.输入参数是Transcriptome时候，读取TME文件夹下的classified_samples_rna.tsv。输入参数是Proteome的时候，读取TME文件夹下的classified_samples_pro.tsv
+5.如果输入参数是Transcriptome时，读取cancer-PDC info.csv中cancer_type/abbreviation对应的PDC_RNA,然后再读取alltumor.csv文件，PDC_RNA列相应的PDC值，再找到其对应的sample名，
+如果输入参数是Proteome时，则读取PDC-pro列对应的sample名，读取cancer-PDC info.csv中cancer_type/abbreviation对应的PDC_Pro,然后再读取alltumor.csv文件，PDC_Pro列相应的PDC值，再找到其对应的sample名，
+
+再根据读取的classified_samples文件返回相应sample名的结果矩阵
+6.输入参数缺少的，给出报错信息
+7.输入参数不在默认范围内的，给出报错信息

@@ -1,0 +1,115 @@
+cptod <- function(cancer.type, 
+                  data.category, 
+                  PDC.study.identifier = NULL, 
+                  data.type = NULL, 
+                  sample.type = NULL) {
+  # 加载必要的库
+  library(dplyr)
+  
+  # 加载癌症类型信息
+  cancer_pdc_info <- read.csv("./data1/cancer-PDC info.csv")
+  valid_cancer_types <- unique(c(cancer_pdc_info$cancer_type, cancer_pdc_info$abbreviation))
+  valid_study_identifiers <- unique(c(cancer_pdc_info$PDC_Pro, cancer_pdc_info$PDC_Phospro))
+  
+  # 定义有效的数据分类、数据类型和样本类型范围
+  valid_data_categories <- c("Biospecimen", "Clinical", "Copy Number Variation",
+                             "Transcriptome", "Proteome", "Phosphoproteome")
+  valid_data_types <- c("Harmonized", "Normalized", "Counts")
+  valid_sample_types <- c("Normal", "Tumor")
+  
+  # 参数验证
+  if (is.null(cancer.type) || !(cancer.type %in% valid_cancer_types)) {
+    stop("Error: 'cancer.type' must be provided and must be valid. Valid values are:", paste(valid_cancer_types, collapse = "\n "))
+  }
+  
+  if(cancer.type %in% cancer_pdc_info$abbreviation){
+    cancer.type = unique(pdc_cancer_info[pdc_cancer_info$abbreviation == cancer.type,]$cancer_type)
+  }
+  
+  
+  if (is.null(data.category) || !(data.category %in% valid_data_categories)) {
+    stop("Error: 'data.category' must be provided and must be valid. Valid values are:",paste(valid_data_categories, collapse = "\n "))
+  }
+  
+  
+  if (!data.type %in% valid_data_types) {
+    stop("Error: 'data.type' is not valid.")
+  }
+  
+  if (!sample.type %in% valid_sample_types) {
+    stop("Error: 'sample.type' is not valid.")
+  }
+  
+  # 如果PDC.study.identifier为空，则加载所有相关文件
+  if (is.null(PDC.study.identifier)) {
+    # 获取所有对应的PDC.study.identifier
+    matching_pdc_identifiers <- cancer_pdc_info %>%
+      filter(cancer_type == cancer.type | abbreviation == cancer.type) %>%
+      select(PDC_Pro, PDC_Phospro) %>%
+      unlist() %>%
+      na.omit()
+    
+    # 如果没有找到对应的PDC编号，报错
+    # 不会没找到的
+    # if (length(matching_pdc_identifiers) == 0) {
+    #   stop("Error: No matching PDC.study.identifier found for the given cancer.type.")
+    # }
+    
+    # 获取指定data.category的所有文件路径
+    base_path <- file.path("./data/clinical tumor sample", cancer.type, data.category,PDC.study.identifier)
+    data_list <- list()
+    
+    for (pdc_id in matching_pdc_identifiers) {
+      files <- list.files(base_path, pattern = pdc_id, recursive = TRUE, full.names = TRUE)
+      
+      if (length(files) > 0) {
+        # 筛选符合sample.type的文件（如果指定了sample.type）
+        if (!is.null(sample.type)) {
+          files <- files[grepl(tolower(sample.type), tolower(files))]
+        }
+        
+        # 筛选符合data.type的文件（如果指定了data.type）
+        if (!is.null(data.type)) {
+          files <- files[grepl(tolower(gsub(" ", "", data.type)), tolower(files))]
+        }
+        
+        # 读取文件数据
+        data_list <- c(data_list, lapply(files, function(f) {
+          read.delim(f, sep = ",", header = TRUE, check.names = FALSE)
+        }))
+      }
+    }
+  } else {
+    # 如果指定了PDC.study.identifier，则加载相应的文件
+    base_path <- file.path("./data", data.category, PDC.study.identifier)
+    
+    # 筛选符合sample.type的文件（如果指定了sample.type）
+    files <- list.files(base_path, recursive = TRUE, full.names = TRUE)
+    
+    if (!is.null(sample.type)) {
+      files <- files[grepl(tolower(sample.type), tolower(files))]
+    }
+    
+    # 筛选符合data.type的文件（如果指定了data.type）
+    if (!is.null(data.type)) {
+      files <- files[grepl(tolower(gsub(" ", "", data.type)), tolower(files))]
+    }
+    
+    # 如果没有找到文件，报错
+    if (length(files) == 0) {
+      stop("Error: No matching files found for the specified parameters.")
+    }
+    
+    # 读取文件数据
+    data_list <- lapply(files, function(f) {
+      read.delim(f, sep = ",", header = TRUE, check.names = FALSE)
+    })
+  }
+  
+  # 返回读取的数据列表
+  return(data_list)
+}
+
+result <- cptod("BRCA", "Clinical data", "Proteome", "intensity")
+
+

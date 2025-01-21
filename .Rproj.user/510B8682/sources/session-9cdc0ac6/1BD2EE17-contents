@@ -1,0 +1,9 @@
+aa <- read.delim("/home/lying/neoflow_test/output/neoantigen_prediction/sample1_neoepitope_filtered_by_reference_add_variant_protein_evidence.tsv")
+bb <- aa[aa$netMHCpan_binding_affinity_nM <50 & aa$netMHCpan_percentail_rank < 0.02,]
+cc <- unique(bb)
+dd <- unique(cc$Neoepitope) #120
+
+
+pep <- read.csv("/home/lying/neoflow_test/output/neoantigen_prediction/pep.csv",sep = ",",header = TRUE)
+pep1 <- unique(pep)
+ee <- unique(pep1$Neoepitope)

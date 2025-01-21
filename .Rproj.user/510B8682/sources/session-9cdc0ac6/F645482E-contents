@@ -1,0 +1,130 @@
+cptsa <- function(cancer.type, data.category, gene.name) {
+  # 检查输入参数的有效性
+  if (missing(cancer.type)) stop("缺少癌症类型参数")
+  if (missing(data.category)) stop("缺少组学类型参数")
+  if (!data.category %in% c("Transcriptome", "Proteome")) stop("组学类型参数无效，仅支持 'Transcriptome' 和 'Proteome'")
+  if (missing(gene.name)) stop("缺少基因名称参数")
+
+  # 读取癌症-PDC映射信息
+  pdc_cancer_info <- read.csv("./data1/cancer-PDC info.csv")
+
+  valid_cancer_types <- unique(c(cancer_pdc_info$cancer_type, cancer_pdc_info$abbreviation))
+
+  # Validate if cancer.type is within the valid range
+  if (!(cancer.type %in% valid_cancer_types)) {
+    stop(paste("Error: 'cancer.type' is not in the valid range. Valid values are:", paste(valid_cancer_types, collapse = "\n ")))
+  }
+
+  # Validate if data.category is within the valid range
+  valid_data_categories <- c("Transcriptome", "Proteome")
+  if (!(data.category %in% valid_data_categories)) {
+    stop(paste("Error: 'data.category' is not in the valid range. Valid values are:", paste(valid_data_categories, collapse = "\n ")))
+  }
+
+
+  # 根据癌症类型获取PDC编号
+  pdc_ids <- pdc_cancer_info[pdc_cancer_info$cancer_type == cancer.type | pdc_cancer_info$abbreviation == cancer.type, "PDC_Pro"]
+
+  # 初始化数据存储
+  combined_clinical <- NULL
+  combined_expression <- NULL
+  first_iteration <- TRUE
+
+  # 遍历所有PDC编号，读取数据并合并
+  for (pdc_id in pdc_ids) {
+    # 临床数据路径
+    clinical_file <- file.path("./data1/Clinical data", pdc_id, paste0(pdc_id, ".csv"))
+    if (!file.exists(clinical_file)) {
+      warning(sprintf("找不到PDC编号 %s 的临床数据文件，跳过", pdc_id))
+      next
+    }
+
+    # 读取临床数据
+    clinical <- read.csv(clinical_file,check.names = FALSE)
+    combined_clinical <- rbind(combined_clinical, clinical)
+
+    # 基因表达数据路径
+    if (data.category == "Transcriptome") {
+      expression_file <- file.path("./data1", "Transcriptome", paste0(pdc_id, "_rna_tumor_nor.csv"))
+    } else if (data.category == "Proteome") {
+      expression_file <- file.path("./data1", "Proteome", paste0(pdc_id, "_pro_tumor_nor.csv"))
+    }
+    if (!file.exists(expression_file)) {
+      warning(sprintf("找不到PDC编号 %s 的基因表达文件，跳过", pdc_id))
+      next
+    }
+
+    # 读取基因表达数据
+    expression <- read.csv(expression_file, row.names = 1, check.names = FALSE, header = TRUE)
+
+    # 按行名合并
+    if (first_iteration) {
+      combined_expression <- expression
+      first_iteration <- FALSE
+    } else {
+      combined_expression <- merge(combined_expression, expression, by = "row.names", all = FALSE)
+      rownames(combined_expression) <- combined_expression$Row.names
+      combined_expression <- combined_expression[, -1] # 移除合并后新增的Row.names列
+    }
+  }
+
+
+
+  clinical <- combined_clinical
+
+  # 只保留"Vital Status"为Alive或Dead的样本
+  clinical1 <- clinical[clinical$`Vital Status` %in% c("Alive", "Dead"), ]
+  clinical1$`Vital Status` <- ifelse(clinical1$`Vital Status` == "Dead", 1, 0)
+
+  # 填充缺失的Days to Death值
+  na_and_alive <- is.na(clinical1$`Days to Death`) & (clinical1$`Vital Status` == 0)
+  clinical1$`Days to Death`[na_and_alive] <- ifelse(!is.na(clinical1$`Days to Last Known Disease Status`[na_and_alive]),
+                                                    clinical1$`Days to Last Known Disease Status`[na_and_alive],
+                                                    clinical1$`Days to Last Follow Up`[na_and_alive])
+
+  # 删除研究开始前死亡或Days to Death为NA的病例
+  clinical2 <- clinical1[clinical1$`Days to Death` >= 0 & !is.na(clinical1$`Days to Death`), ]
+  clinical2 <- clinical2[, c("Cases Submitter ID", "Cause of Death", "Days to Death", "Vital Status","Days to Last Follow Up","Days to Last Known Disease Status")]
+
+
+  # 读取基因表达数据
+  m <- combined_expression
+
+  # 过滤目标基因并合并临床数据
+  gene_expression <- as.data.frame(t(m[rownames(m) == gene.name, ]))
+  if (ncol(gene_expression) == 0) stop("指定的基因未在基因表达数据中找到")
+  median_value <- median(gene_expression[,1])
+  gene_expression$group <- ifelse(gene_expression[,1] > median_value,"High","Low" )
+
+
+  clinical_m <- merge(clinical2, gene_expression, by.x = "Cases Submitter ID", by.y = "row.names")
+
+  # 进行生存分析
+  library(survival)
+  library(survminer)
+
+  km.by.pro <- survfit(Surv(`Days to Death`, `Vital Status`) ~ group, data = clinical_m)
+  logrank_test <- survdiff(Surv(`Days to Death`, `Vital Status`) ~ group, data = clinical_m)
+  print(logrank_test)
+
+  # 绘制生存曲线
+  p <- ggsurvplot(km.by.pro,
+                  data = clinical_m,
+                  pval = TRUE,
+                  surv.median.line = "hv",
+                  risk.table = TRUE,
+                  risk.table.height = .25,
+                  xlab = "Time in days",
+                  ylab = "Overall Survival Probability",
+                  xlim = c(0, NA),
+                  legend.title = "")
+  return(list(km_fit = km.by.pro, logrank_test = logrank_test, plot = p))
+  }
+
+# 函数调用例子
+res <- cptsa(
+  cancer.type  = "OV",
+  data.category = "Proteome",
+  gene.name = "MN"
+  )
+

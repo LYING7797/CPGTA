@@ -1,0 +1,144 @@
+  CPTACdl <- function(cancer.type,
+                      data.category,
+                      PDC.study.identifier=NULL,
+                      data.type=NULL,
+                      sample.type=NULL) {
+  # 加载必要的包
+  if (!requireNamespace("dplyr", quietly=TRUE)) {
+    install.packages("dplyr")
+  }
+  library(dplyr)
+
+  # 读取 PDC 信息文件
+  pdc_info <- read.csv('./data1/cancer-PDC info.csv',check.names = FALSE)
+
+  # 验证输入参数----
+  if (missing(cancer.type) || missing(data.category)) {
+    stop("Parameters 'cancer.type' and 'data.category' are required.")
+  }
+
+  valid_cancer_types <- union(pdc_info$cancer_type, pdc_info$abbreviation)
+  valid_data_categories <- c("Copy Number Variation", "Transcriptome", "Proteome",
+                             "Phosphoproteome", "Biospecimen", "Clinical data")
+  valid_data_types <- c("Tidy data", "Normalized data")
+  valid_sample_types <- c("Normal tissue", "Tumor")
+
+  if (!cancer.type %in% valid_cancer_types) {
+    stop("Invalid 'cancer.type' parameter.Valid values are:", paste(valid_cancer_types, collapse = "\n "))
+  }
+
+  if (!data.category %in% valid_data_categories) {
+    stop("Invalid 'data.category' parameter.Valid values are:", paste(valid_data_categories, collapse = "\n "))
+  }
+
+  if (!is.null(data.type) && !(data.type %in% valid_data_types)) {
+    stop("Invalid 'data.type' parameter.Valid values are:",paste(valid_data_types, collapse = "\n "))
+  }
+
+  if (!is.null(sample.type) && !(sample.type %in% valid_sample_types)) {
+    stop("Invalid 'sample.type' parameter.Valid values are:",paste(valid_sample_types, collapse = "\n "))
+  }
+
+
+  # 根据 data.category 和 cancer.type 确定 PDC.study.identifier----
+  if(!is.null(data.category) & !is.null(cancer.type)){
+    path <- paste0("./data1/",data.category)
+    if (data.category %in% c("Copy Number Variation","Transcriptome", "Proteome", "Biospecimen", "Clinical data")) {
+      study_identifier <- unique(pdc_info$PDC_Pro[which((pdc_info$cancer_type == cancer.type | pdc_info$abbreviation == cancer.type))])
+    } else if (data.category == "Phosphoproteome") {
+      study_identifier <- unique(pdc_info$PDC_Phospro[which((pdc_info$cancer_type == cancer.type | pdc_info$abbreviation == cancer.type))])
+    }
+      # 进一步检查 PDC.study.identifier, data.type, sample.type 是否都是空值
+      # 当其他参数都是空值的时候，只给出data.category和cancer.type两个参数时，
+      # 可以确定子文件夹及根据cancer type确定PDC，按列表下载所有有该PDC编号的文件
+      if(is.null(PDC.study.identifier) & is.null(data.type) & is.null(sample.type)) {
+
+        # 当有多个 PDC.study.identifier 时，依次下载每个
+        all_files <- c()
+        for (identifier in study_identifier) {
+            pattern <- paste0(identifier, ".*\\.csv$")
+            # 执行文件搜索和读取
+            files <- list.files(path = path, pattern = pattern, recursive = TRUE, full.names = TRUE)
+            all_files <- c(all_files, files)
+        }
+        file_contents <- setNames(lapply(all_files, read.csv), make.names(gsub(".*/", "", all_files)))
+        return(file_contents)
+        if (length(files) == 0) {
+          stop("No files found with the provided parameters.")
+        }
+
+        }
+        else {
+          # PDC.study.identifier, data.type, sample.type 不全都是空值的情况
+          dataffix <- ifelse(!is.null(data.type), switch(data.type,
+                                                         "Tidy data" = "_tidy",
+                                                         "Normalized data" = "_nor"), ".*")
+
+          sampleffix <- ifelse(!is.null(sample.type), switch(sample.type,
+                                                             "Normal tissue" = "_normal",
+                                                             "Tumor" = "_tumor"), ".*")
+
+
+          if (!is.null(PDC.study.identifier)) {
+            identifier_prefix <-paste0(PDC.study.identifier, ".*")
+          } else {
+            identifier_prefix <- paste0(study_identifier,".*")
+          }
+
+          # 构建文件查找模式，例如 PDC12345_tidy_normal.csv
+          all_files <- c()
+          for (identifier in identifier_prefix) {
+            pattern <- paste0(identifier, sampleffix, dataffix, "\\.csv$")
+            # 执行文件搜索和读取
+            files <- list.files(path = path, pattern = pattern, recursive = TRUE, full.names = TRUE)
+            all_files <- c(all_files, files)
+          }
+          if (length(all_files) == 0) {
+            stop("No files found with the provided parameters.")
+          }
+          # 读取文件
+          file_contents <- setNames(lapply(all_files, read.csv), make.names(gsub(".*/", "", all_files)))
+          return(file_contents)
+        }
+
+    }else{
+      stop("The parameters 'data.category' and 'cancer.type' are essential and cannot be NULL.")}
+
+  }
+
+
+
+
+  # 定义进行测试的参数
+
+  first_type_files <- CPTACdl("BRCA", "Phosphoproteome")
+
+  second_type_files <- CPTACdl(cancer.type = "OV",
+                                       data.category = "Phosphoproteome",
+                                       PDC.study.identifier=NULL,
+                                       data.type="Tidy data",
+                                       sample.type="Tumor")
+  third_type_files <- CPTACdl(cancer.type = "LUAD",
+                               data.category = "Phosphoproteome",
+                               PDC.study.identifier=NULL,
+                               data.type = NULL,
+                               sample.type="Tumor")
+
+
+  four_type_files <- CPTACdl(cancer.type = "UCEC",
+                              data.category = "Phosphoproteome",
+                              PDC.study.identifier=NULL,
+                              data.type = NULL,
+                              sample.type="Normal tissue")
+
+  five_type_files <- CPTACdl(cancer.type = "PDAC",
+                             data.category = "Phosphoproteome",
+                             PDC.study.identifier="PDC000249",
+                             data.type = NULL,
+                             sample.type=NULL)
+
+  six_type_files <- CPTACdl(cancer.type = "PDAC",
+                            data.category = "Clinical data",
+                             PDC.study.identifier="PDC000249",
+                             data.type = NULL,
+                             sample.type=NULL)

@@ -1,0 +1,92 @@
+celltype <- read.csv("./data/cancer cell lines/Transcriptome/rnaseq_tpm_20220624.csv",sep = ",",header = TRUE)%>%
+  select(-c(1,2)) %>%
+  slice(1) %>%
+  unlist() %>%
+  unique()
+
+
+cellquery <- function(cancer.type,
+                      cell.type,
+                      data.category,
+                      data.type) {
+  library(dplyr)
+  cancertype <- read.csv("./data/cancer cell lines/model_list_20240110.csv",sep = ",",header = TRUE) %>%
+    select(cancer_type) %>%
+    unlist() %>%
+    unique()
+
+  celltype <- read.csv("./data/cancer cell lines/model_list_20240110.csv",sep = ",",header = TRUE)%>%
+    select(model_id) %>%
+    unlist() %>%
+    unique()
+
+  datacategory <- c("Transcriptome","Proteome","Gene dependence score")
+
+  datatype <- c("intensity","zscore","count","ftpm","tpm","fitness scores_fold change")
+
+}
+
+
+library(dplyr)
+
+read_data_based_on_params <- function(cancer.type, cell.type, data.category, data.type = NULL) {
+
+  # 验证cancer.type是否在cancertype范围内
+  cancer_types <- get_cancer_types() # 假设这是先前定义的获取cancertype的函数
+  if (!(cancer.type %in% cancer_types)) {
+    stop("Invalid cancer.type. Not found in cancer types.")
+  }
+
+  # 验证cell.type是否在celltype范围内
+  cell_types <- get_cell_types() # 假设这是先前定义的获取celltype的函数
+  if (!(cell.type %in% cell_types)) {
+    stop("Invalid cell.type. Not found in cell types.")
+  }
+
+  # 检查两者是否匹配
+  models <- read.csv("./data/cancer cell lines/model.csv", sep=",", header=TRUE)
+  if(!(cancer.type %in% models$cancer_type & cell.type %in% models$cell_line)) {
+    stop("The cell type is not associated with the cancer type in model.csv")
+  }
+
+  # 验证data.category是否在datacategory范围内
+  valid_data_categories <- get_data_categories() # 获取datacategory范围的函数
+  if (!(data.category %in% valid_data_categories)) {
+    stop("Invalid data.category.")
+  }
+
+  # 验证并设置data.type基于data.category
+  valid_data_types <- switch(data.category,
+                             "Transcriptome" = c("count", "fpkm", "tpm"),
+                             "Proteome" = c("intensity", "zscore"),
+                             "Gene dependency score" = "fitness scores_fold change",
+                             stop("Invalid data.category provided.")
+  )
+
+  if(is.null(data.type)) {
+    if(data.category == "Gene dependency score") {
+      data.type <- "fitness scores_fold change"
+    } else {
+      stop("data.type cannot be NULL for the provided data.category.")
+    }
+  } else if (!(data.type %in% valid_data_types)) {
+    stop("Invalid data.type for the selected data.category.")
+  }
+
+  # 构建文件路径
+  file_path <- paste0("./data/cancer cell lines/", data.category, "/", data.type, ".csv")
+
+  # 读取数据
+  # 注意这个仅是例子，根据您的文件结构您可能需要自定义读取逻辑
+  data <- read.csv(file_path, sep = ",", header = TRUE)
+
+  # 如果只指定了cancer.type或cell.type，或者两者都指定了但匹配，执行特定的过滤逻辑
+  if (!is.null(cancer.type)) {
+    data <- data %>% filter(cancer_type == cancer.type)
+  }
+  if (!is.null(cell.type)) {
+    data <- data %>% filter(cell_line == cell.type)
+  }
+
+  return(data)
+}

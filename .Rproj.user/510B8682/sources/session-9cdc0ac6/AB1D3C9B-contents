@@ -1,0 +1,129 @@
+# 读取相关clinical data, 只保留有生存信息的cases
+library(readr)
+csv_files <- list.files(path = "../clinical data/", pattern = "\\.csv$", full.names = TRUE)
+data_list <- lapply(csv_files, read_csv)
+names(data_list) <- sapply(csv_files, function(x) tools::file_path_sans_ext(basename(x)))
+
+
+# 先对processed_data_list应用之前的处理
+processed_data_list <- lapply(seq_along(data_list), function(x) {
+  df <- data_list[[x]][, c("Cases Submitter ID", "Cause of Death", "Days to Death", "Vital Status")]
+  df$DataFrameName <- names(data_list)[[x]]
+  return(df)
+})
+
+# 过滤满足所有条件的数据框
+filtered_data_list <- Filter(function(df) {
+  # 检查除了NA之外Vital Status有多少种不同的值
+  unique_statuses <- unique(na.omit(df$`Vital Status`))
+  all_days_to_death_na <- all(is.na(df$`Days to Death`))
+  
+  # 检查条件：不只一种Vital Status类型，不全是"Not Report"，且"Days to Death"不全为NA
+  length(unique_statuses) > 1 && !(length(unique_statuses) == 1 && unique_statuses[1] == "Not Report") && !all_days_to_death_na
+}, processed_data_list)
+
+
+df <- do.call(rbind, filtered_data_list) # 1111
+df1 <- subset(df, !is.na(`Vital Status`) & (`Vital Status` == "Alive" | `Vital Status` == "Dead")) #1013
+# 选取 `Vital Status` 列为 "Alive" 
+# 或 (`Vital Status` 列为 "Dead" 且 `Cause of Death` 列为 "Cancer Related") 的行
+# df2 <- df1 %>%
+  # filter(`Vital Status` == "Alive" | 
+           # (`Vital Status` == "Dead" & (`Cause of Death` == "Cancer Related" | is.na(`Cause of Death`) |`Cause of Death` == "Unknown")))
+
+
+# 所有用来做差异分析的蛋白质组数据----
+metadata <- read.csv("../pan-cancer metadata.csv",sep = ",",header = TRUE,check.names = FALSE)[-20,]
+demetadata <-metadata[metadata$`Tumor pro` != "" & metadata$`NAT pro` != "", ]
+pro_files <- list.files(path = "../proteome_data_process/Proteomics Nor Data/",pattern = "tumor_nor\\.csv$",full.names = TRUE)
+pro_list <- lapply(pro_files,read_csv)
+names(pro_list) <- sapply(pro_files,function(x) tools::file_path_sans_ext(basename(x)))
+names(pro_list) <- sub("_pro_tumor_nor","",names(pro_list))
+
+pro_list <- pro_list[names(pro_list) %in% demetadata$`proteome-PDC study identifier`]
+# 将列表中的蛋白质组数据拼接到一个数据框中，首先将第一列命名为ID列
+pro_list <- lapply(pro_list, function(x) {
+  names(x)[1] <- "ID"
+  return(x)
+})
+
+prodf <- Reduce(function(x, y) {
+  merged_df <- merge(x, y, by = "ID", all = TRUE)  # 使用 "ID" 列作为合并依据
+  return(merged_df)
+}, pro_list)
+
+
+
+# 有生存数据的case id
+rownames(prodf) <- prodf[,1]
+pro_surv <- prodf[,colnames(prodf) %in% df1$`Cases Submitter ID` ]
+
+
+
+# prodf20 <- pro_surv[rownames(pro_surv) %in% pro50_20,]
+prodf20 <- pro_surv[rownames(pro_surv) %in% top20$ID,]
+prodf20_binary <- as.data.frame((prodf20 > rowMeans(prodf20)) + 0) # 753
+prodf20_cols <- colSums(prodf20_binary,na.rm = TRUE);prodf20_cols # 753
+
+df2 <- df1[df1$`Cases Submitter ID` %in% colnames(prodf),] # 637
+df4 <- df2
+df4$pro <- NA
+df4$pro <- ifelse(prodf20_cols[match(df4$`Cases Submitter ID`, names(prodf20_cols))] >= 8, "up", "down")
+df4$`Vital Status` <- ifelse(df4$`Vital Status` == "Dead", 1, 0)
+
+
+km.by.pro <- survfit(Surv(`Days to Death`, `Vital Status`) ~ pro, data = df4)
+ggsurvplot(km.by.pro)
+log_rank_test <- survdiff(Surv(`Days to Death`, `Vital Status`) ~ pro, data = df4)
+log_rank_test$pvalue
+ggsave(filename = "./PLOT/泛癌差异蛋白分层的生存分析.pdf",
+       width = 7,
+       height = 7,
+       device = "pdf") 
+
+
+
+# 在泛癌层面上 上述蛋白panel下调的生存时间更长
+# 对上述筛选出来的20个gene为一个panel,分别对特定癌种进行生存分析
+
+
+cli_list <- data_list[names(data_list) %in% demetadata$`proteome-PDC study identifier`]
+
+# 针对 CCRCC,GBM,HNSCC三种癌症共享的8个特异高表达蛋白质做针对这3种癌症的生存分析
+pro8 <- c('GPX8','HK3','IKBIP','MMP14','OAS3','PLOD3','RAC2','TAP2')
+prolist3 <- list(pro_list[["PDC000127"]],pro_list[['PDC000204']],pro_list[['PDC000221']])
+
+# 使用Reduce函数结合merge按照ID列将数据框合并
+pro3 <- Reduce(function(x, y) merge(x, y, by = "ID", all = TRUE), prolist3)
+pro38 <- pro3[pro3[,1] %in% pro8,]
+pro38_binary <- as.data.frame((pro38[,-1] > rowMeans(pro38[,-1])) + 0)
+pro38colsum <- colSums(pro38_binary,na.rm = TRUE)
+
+clic8 <- df1[df1$`Cases Submitter ID` %in% colnames(pro38),] #314 
+clic8$pro <- ifelse(pro38colsum[match(clic8$`Cases Submitter ID`, names(pro38colsum))] >= 6, "up", "down")
+
+clic9 <- clic8 %>%
+  filter(`Vital Status` == "Alive" | (`Vital Status` == "Dead" & `Cause of Death` == "Cancer Related"))
+clic9$`Vital Status` <- ifelse(clic9$`Vital Status` == "Dead", 1, 0)
+
+km.by.pro <- survfit(Surv(`Days to Death`, `Vital Status`) ~ pro, data = clic9)
+ggsurvplot(km.by.pro)
+log_rank_test <- survdiff(Surv(`Days to Death`, `Vital Status`) ~ pro, data = clic9)
+log_rank_test$pvalue
+
+# ggsurvplot(km.by.pro, # 创建的拟合对象
+#            data = clic,  # 指定变量数据来源
+#            conf.int = TRUE, # 显示置信区间
+#            pval = TRUE, # 添加P值
+#            surv.median.line = "hv",  # 添加中位生存时间线
+#            risk.table = TRUE, # 添加风险表
+#            risk.table.height=.25,
+#            xlab = "Time in days",
+#            ylab = "Overall Survival Probility",
+#            legend = c(0.8,0.75), # 指定图例位置
+#            legend.title = "", # 设置图例标题，这里设置不显示标题，用空格替代
+#            legend.labs = c("Female","Male"), # 指定图例分组标签
+#            # break.x.by = 200,  # 设置x轴刻度间距
+#            palette = "hue")  # 自定义调色板 "grey","npg","aaas","lancet","jco", "ucscgb","uchicago","simpsons"和"rickandmorty"
+
+

@@ -1,0 +1,85 @@
+#要实现可同时输入多个参数的功能，要让函数接受向量形式的输入，然后对这些向量进行迭代处理
+
+CPTACquery <- function(cancer.type,
+                       data.category,
+                       PDC.study.identifier = NULL,
+                       data.type = NULL,
+                       sample.type = NULL) {
+  library(dplyr)
+
+  # 定义有效的参数范围
+  valid_cancer_types <- c("Breast Invasive Carcinoma", "Clear Cell Renal Cell Carcinoma", "Colon Adenocarcinoma",
+                          "Early Onset Gastric Cancer", "Glioblastoma", "Head and Neck Squamous Cell Carcinoma",
+                          "Hepatocellular Carcinoma", "Lung Adenocarcinoma", "Lung Squamous Cell Carcinoma",
+                          "Ovarian Serous Cystadenocarcinoma", "Pancreatic Ductal Adenocarcinoma",
+                          "Pediatric Brain Tumors", "Uterine Corpus Endometrial Carcinoma","Acute Myeloid Leukemia")
+  valid_data_categories <- c("Biospecimen", "Clinical", "Copy Number Variation",
+                             "Transcriptome", "Proteome", "Phosphoproteome")
+  valid_study_identifiers <- c('PDC000120', 'PDC000127', 'PDC000116', 'PDC000214', 'PDC000204', 'PDC000221',
+                               'PDC000198', 'PDC000153', 'PDC000219', 'PDC000434', 'PDC000234', 'PDC000113',
+                               'PDC000118', 'PDC000173', 'PDC000248', 'PDC000270', 'PDC000180', 'PDC000125','PDC000477',
+                               'PDC000115', 'PDC000117','PDC000119','PDC000121','PDC000126','PDC000128','PDC000149',
+                               'PDC000174','PDC000176','PDC000199','PDC000205', 'PDC000215','PDC000220','PDC000222',
+                               'PDC000232','PDC000249','PDC000271','PDC000436','PDC000478')
+  valid_data_types <- c('Harmonized', 'Normalized')
+  valid_sample_types <- c("Primary tumor", "Normal tissue")
+
+  # 检查参数
+  if (!all(cancer.type %in% valid_cancer_types)) {
+    stop("Invalid cancer.type value")
+  }
+  if (!all(data.category %in% valid_data_categories)) {
+    stop("Invalid data.category value")
+  }
+  if (!is.null(PDC.study.identifier) && !all(PDC.study.identifier %in% valid_study_identifiers)) {
+    stop("Invalid PDC.study.identifier value")
+  }
+  if (!is.null(data.type) && !all(data.type %in% valid_data_types)) {
+    stop("Invalid data.type value")
+  }
+  if (!is.null(sample.type) && !all(sample.type %in% valid_sample_types)) {
+    stop("Invalid sample.type value")
+  }
+
+  # 用expand.grid创建所有参数的组合
+  params <- expand.grid(cancer.type = cancer.type,
+                        data.category = data.category,
+                        PDC.study.identifier = if (is.null(PDC.study.identifier)) NA else PDC.study.identifier,
+                        data.type = if (is.null(data.type)) NA else data.type,
+                        sample.type = if (is.null(sample.type)) NA else sample.type,
+                        stringsAsFactors = FALSE)
+
+  data_list <- list()
+
+  # 迭代每个参数的组合，构造路径并收集数据
+  for (i in 1:nrow(params)) {
+    current_params <- params[i, ]
+    path <- c("./data/tumor", current_params$cancer.type, current_params$data.category)
+
+    # 填充提供的可选参数
+    if (!is.na(current_params$PDC.study.identifier)) {
+      path <- c(path, current_params$PDC.study.identifier)
+    }
+    if (!is.na(current_params$data.type)) {
+      path <- c(path, current_params$data.type)
+    }
+    if (!is.na(current_params$sample.type)) {
+      path <- c(path, current_params$sample.type)
+    }
+
+    # 最终的文件夹路径
+    directory_path <- file.path(path)
+
+    # 如果路径存在，从路径中读取数据
+    if (dir.exists(directory_path)) {
+      files <- list.files(directory_path, full.names = TRUE, recursive = TRUE)
+      for (file in files) {
+        # 读取每个文件到数据框中
+        data_list[[length(data_list) + 1]] <- read.csv(file)
+      }
+    }
+  }
+
+  # 返回所有数据框的列表
+  return(data_list)
+}

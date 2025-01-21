@@ -1,0 +1,164 @@
+cptic <- function(cancer.type, data.category) {
+  # Check if both parameters are provided
+  if (missing(cancer.type) || missing(data.category)) {
+    stop("Error: Both 'cancer.type' and 'data.category' parameters are required.")
+  }
+  
+  # Load necessary libraries
+  if (!requireNamespace("utils", quietly = TRUE)) {
+    stop("Error: The 'utils' package is required but not installed.")
+  }
+  
+  # Define file paths
+  info_file <- "./data1/cancer-PDC info.csv"
+  alltumor_file <- "./data1/TME/alltumor.csv"
+  tme_folder <- "./data1/TME"
+  
+  # Check if files exist
+  if (!file.exists(info_file)) {
+    stop(paste("Error: The file", info_file, "does not exist in the working directory."))
+  }
+  
+  if (!file.exists(alltumor_file)) {
+    stop(paste("Error: The file", alltumor_file, "does not exist in the working directory."))
+  }
+  
+  # Read cancer-PDC info.csv file
+  cancer_info <- tryCatch({
+    utils::read.csv(info_file, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop("Error: Unable to read 'cancer-PDC info.csv'. Please check the file format.")
+  })
+  
+  # Check if required columns exist
+  required_columns_info <- c("cancer_type", "abbreviation", "PDC_RNA", "PDC_Pro")
+  if (!all(required_columns_info %in% colnames(cancer_info))) {
+    stop(paste("Error: The file", info_file, "must contain the following columns:",
+               paste(required_columns_info, collapse = ", ")))
+  }
+  
+  # Create a vector of valid cancer types and abbreviations
+  valid_cancer_types <- unique(c(cancer_info$cancer_type, cancer_info$abbreviation))
+  
+  # Validate cancer.type input
+  if (!(cancer.type %in% valid_cancer_types)) {
+    stop(paste("Error: 'cancer.type' must be one of the following:",
+               paste(valid_cancer_types, collapse = ", ")))
+  }
+  
+  # Define valid data categories
+  valid_data_categories <- c("Transcriptome", "Proteome")
+  
+  # Validate data.category input
+  if (!(data.category %in% valid_data_categories)) {
+    stop("Error: 'data.category' must be either 'Transcriptome' or 'Proteome'.")
+  }
+  
+  # Read alltumor.csv file
+  alltumor_data <- tryCatch({
+    utils::read.csv(alltumor_file, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop("Error: Unable to read 'alltumor.csv'. Please check the file format.")
+  })
+  
+  # Determine PDC column and classification file based on data.category
+  if (data.category == "Transcriptome") {
+    pdc_info_column <- "PDC_RNA"
+    sample_column_alltumor <- "PDC-RNA"
+    data_file <- file.path(tme_folder, "classified_samples_rna.tsv")
+  } else { # Proteome
+    pdc_info_column <- "PDC_Pro"
+    sample_column_alltumor <- "PDC-Pro"
+    data_file <- file.path(tme_folder, "classified_samples_pro.tsv")
+  }
+  
+  # Filter cancer_info for the given cancer.type or its abbreviation
+  filtered_cancer_info <- cancer_info[
+    cancer_info$cancer_type == cancer.type | 
+      cancer_info$abbreviation == cancer.type, ]
+  
+  if (nrow(filtered_cancer_info) == 0) {
+    stop(paste("Error: No matching records found for cancer type", cancer.type, "in 'cancer-PDC info.csv'."))
+  }
+  
+  # 获取所有相关的 PDC_IDs
+  relevant_pdc_ids <- unique(na.omit(as.character(filtered_cancer_info[[pdc_info_column]])))
+  
+  if (length(relevant_pdc_ids) == 0) {
+    stop(paste("Error: No", pdc_info_column, "IDs found for cancer type", cancer.type, "in 'cancer-PDC info.csv'."))
+  }
+  
+  # 检查 PDC_IDs 是否存在于 alltumor_data 的相应列中
+  if (!(sample_column_alltumor %in% colnames(alltumor_data))) {
+    if (data.category == "Proteome") {
+      stop("Error: There are currently no proteomic TME classification results available for this cancer type.")
+    } else if (data.category == "Transcriptome") {
+      stop("Error: There are currently no transcriptomic TME classification results available for this cancer type.")
+    }
+  }
+  
+  # 获取存在的 PDC_IDs 和不存在的 PDC_IDs
+  existing_pdc_ids <- unique(na.omit(as.character(alltumor_data[[sample_column_alltumor]])))
+  missing_pdc_ids <- setdiff(relevant_pdc_ids, existing_pdc_ids)
+  
+  if (length(missing_pdc_ids) > 0) {
+    stop(paste("Error: The following PDC IDs for cancer type", cancer.type, "are not found in 'alltumor.csv':",
+               paste(missing_pdc_ids, collapse = ", ")))
+  }
+  
+  # 获取所有相关的样本名
+  sample_names <- unique(na.omit(as.character(alltumor_data[alltumor_data[[sample_column_alltumor]] %in% relevant_pdc_ids, "Sample"])))
+  
+  if (length(sample_names) == 0) {
+    stop(paste("Error: No sample names found for the specified PDC IDs in 'alltumor.csv'."))
+  }
+  
+  # Check if classification file exists
+  if (!file.exists(data_file)) {
+    stop(paste("Error: The file", data_file, "does not exist."))
+  }
+  
+  # Read classification data
+  classification_data <- tryCatch({
+    utils::read.delim(data_file, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop(paste("Error: Unable to read", data_file, ". Please check the file format."))
+  })
+  
+  # Assume classification data has a 'Sample' column (case-sensitive)
+  if (!("Sample" %in% colnames(classification_data))) {
+    stop(paste("Error: The file", data_file, "must contain a 'Sample' column."))
+  }
+  
+  # Filter classification data to include only specified samples
+  filtered_classification <- classification_data[classification_data$Sample %in% sample_names, ]
+  
+  # Check if any samples were filtered
+  if (nrow(filtered_classification) == 0) {
+    warning("Warning: No matching samples found in the classification data.")
+    return(filtered_classification)
+  }
+  
+  # Return the final classification results
+  return(filtered_classification)
+}
+
+### **Function Description**
+
+The `cptic` function classifies tumor samples into immune subtypes based on their immunological characteristics, aiding in the understanding of the tumor microenvironment. Given a specific cancer type and omics type, the function returns the immune subtype classification results for all samples of that cancer type.
+
+### **Parameters**
+
+- `cancer.type`: The specified cancer type. Must be one of the values in the `cancer_type` or `abbreviation` columns of the `cancer-PDC info.csv` file.
+- `data.category`: The omics type, which must be either `"Transcriptome"` or `"Proteome"`.
+
+### **Usage Examples**
+
+```r
+# Example 1: Classify breast cancer samples using transcriptome data
+result1 <- cptic(cancer.type = "Breast Cancer", data.category = "Transcriptome")
+print(result1)
+
+# Example 2: Classify BRCA samples using proteome data (assuming BRCA is the abbreviation for breast cancer)
+result2 <- cptic(cancer.type = "BRCA", data.category = "Proteome")
+print(result2)

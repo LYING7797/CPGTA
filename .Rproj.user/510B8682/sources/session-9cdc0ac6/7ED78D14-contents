@@ -1,0 +1,96 @@
+# UMAP ----
+# https://blog.csdn.net/weixin_45822007/article/details/125688475
+# 蛋白质组数据降维可视化----
+library(umap)
+library(tidyverse)
+library(ggplot2)
+library(viridis)
+# 标准化函数
+normalization <- function(x) {
+  median_val <- median(na.omit(x))  # 计算中位数
+  sd_val <- sd(na.omit(x))  # 计算标准差
+  result <- (x - median_val) / sd_val  # 计算结果
+  return(result)
+}
+
+# umap画图函数----
+umap_plot <- function(data,meta_data){
+  set.seed(77)
+  umap_result <- umap(data, n_neighbors = 30, n_components = 2, metric = 'euclidean')
+  
+  umap_df <- as.data.frame(umap_result$layout) %>%
+    setNames(c("UMAP1", "UMAP2")) %>%
+    merge(meta_data, by.x ="row.names", by.y = "sample")
+  
+  # 定义19种颜色的调色板
+  color_palette <- c("#e1703c", "#f2bf9e", "#4091cf", "#a1c6e7", "#8cba54", "#ccddae", "#992f87", "#c9a2c6", "#552e81", "#a695db",
+                              "#efae42", "#f9daa6","#818181","#2A5522","#BF9895","#E07E35","#f2cca0","#A9C4e6","#d1392b")
+  plot <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = study)) +
+    geom_point(size = 3.5, alpha = 0.7) +
+    scale_color_manual(values = color_palette) + # 应用颜色调色板
+    labs(title = "UMAP Visualization of Cancer Samples",
+         x = "UMAP1",
+         y = "UMAP2") +
+    theme_minimal(base_size = 14) +
+    theme(
+      plot.background = element_blank(),
+      panel.background = element_blank(),
+      panel.border = element_rect(colour = "black",fill = NA,size = 1),
+      panel.grid.major = element_blank(), # 移除主要网格线
+      panel.grid.minor = element_blank(), # 移除次要网格线
+      plot.title = element_text(color = "black", size = 20, face = "bold", hjust = 0.5),
+      axis.title.x = element_text(size = 14),
+      axis.title.y = element_text(size = 14),
+      legend.position = "right"
+    )
+  plot
+}
+
+
+norprolist <- list.files("../proteome_data_process/Proteomics tidy data 2.0/", pattern = "tumor_nor.csv") # 19个study
+pro_meta_data <- data.frame(sample = character(0),study = character(0))
+norpro <- data.frame()
+for (i in norprolist) {
+  path <- paste0("../proteome_data_process/Proteomics tidy data 2.0/",i)
+  data <- read.delim(path,sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+  sample <- colnames(data)
+  a <- sub("_pro_tumor_nor.csv","",i)
+  study <- rep(a,length(sample))
+  n <- cbind(sample,study)
+  pro_meta_data <- rbind(pro_meta_data,n)
+  
+  norpro <- merge(norpro,data,by = "row.names",all = TRUE)
+  rownames(norpro) <- norpro[,1]
+  norpro <- norpro[,-1]
+}
+norpro <- na.omit(norpro)
+proy <- apply(norpro, 2, normalization)
+proz <- apply(proy,1,normalization)
+
+pro_uamp <- umap_plot(proz,pro_meta_data);pro_uamp
+ggsave("./PLOT1/泛癌蛋白质组2269样本UMAP降维.pdf",width = 10,height = 8)
+
+
+#转录组数据降维可视化----
+norrnalist <- list.files("../RNA_data_process/RNA tidy data 2.0/", pattern = "tumor_nor.csv") # 15个study
+rna_meta_data <- data.frame(sample = character(0),study = character(0))
+norrna <- data.frame()
+for (i in norrnalist) {
+  path <- paste0("../RNA_data_process/RNA tidy data 2.0/",i)
+  data <- read.delim(path,sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+  sample <- colnames(data)
+  a <- sub("_rna_tumor_nor.csv","",i)
+  study <- rep(a,length(sample))
+  n <- cbind(sample,study)
+  rna_meta_data <- rbind(rna_meta_data,n)
+  
+  norrna <- merge(norrna,data,by = "row.names",all = TRUE)
+  rownames(norrna) <- norrna[,1]
+  norrna <- norrna[,-1]
+}
+norrna <- na.omit(norrna)
+rnay <- apply(norrna, 2, normalization)
+rnaz <- apply(rnay,1,normalization)
+
+rna_umap <- umap_plot(rnaz,rna_meta_data);rna_umap
+ggsave("./PLOT1/泛癌转录组1734样本UMAP降维.pdf",width = 10,height = 8)

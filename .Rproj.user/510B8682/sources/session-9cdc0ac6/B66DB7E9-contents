@@ -1,0 +1,213 @@
+cptod <- function(cancer.type,
+                       data.category,
+                       PDC.study.identifier = NULL,
+                       data.type = NULL,
+                       sample.type = NULL) {
+  # 首先加载dplyr库
+  library(dplyr)
+
+  # 定义可接受的癌症类型范围
+  cancer.types <- c(
+    "Breast Invasive Carcinoma", "Clear Cell Renal Cell Carcinoma", "Colon Adenocarcinoma",
+    "Early Onset Gastric Cancer", "Glioblastoma", "Head and Neck Squamous Cell Carcinoma",
+    "Hepatocellular Carcinoma", "Lung Adenocarcinoma", "Lung Squamous Cell Carcinoma",
+    "Ovarian Serous Cystadenocarcinoma", "Pancreatic Ductal Adenocarcinoma",
+    "Pediatric Brain Tumors", "Uterine Corpus Endometrial Carcinoma","Acute Myeloid Leukemia")
+
+  # 定义可接受的数据分类范围
+  data.categories <- c(
+    "Biospecimen", "Clinical", "Copy Number Variation",
+    "Transcriptome", "Proteome", "Phosphoproteome")
+
+  # 定义可接受的研究标识符范围
+  valid_study_identifiers <- c('PDC000120',
+                               'PDC000127',
+                               'PDC000116',
+                               'PDC000214',
+                               'PDC000204',
+                               'PDC000221',
+                               'PDC000198',
+                               'PDC000153',
+                               'PDC000219',
+                               'PDC000434',
+                               'PDC000234',
+                               'PDC000113',
+                               'PDC000118',
+                               'PDC000173',
+                               'PDC000248',
+                               'PDC000270',
+                               'PDC000180',
+                               'PDC000125',
+                               'PDC000477')
+
+  # 定义可接受的数据类型和样本类型范围
+  valid_data_types <- c('Harmonized','Normalized')
+  valid_sample_types <- c("Primary tumor", "Normal tissue")
+
+  # 检查cancer.type参数，这是必填的
+  if (is.null(cancer.type) || !(cancer.type %in% cancer.types)) {
+    stop("cancer.type must be provided and must be one of the predefined types.")
+  }
+
+  # 检查data.category参数，这也是必填的
+  if (is.null(data.category) || !(data.category %in% data.categories)) {
+    stop("data.category must be provided and must be one of 'Biospecimen', 'Clinical', 'Copy Number Variation', 'Transcriptome', 'Proteome', or 'Phosphoproteome'.")
+  }
+
+  # 如果data.category不在"Biospecimen"或"Clinical"中，检查data.type和sample.type是否提供
+  if (!(data.category %in% c("Biospecimen", "Clinical")) && (is.null(data.type) || !(data.type %in% valid_data_types) || is.null(sample.type) || !(sample.type %in% valid_sample_types))) {
+    stop("data.type and sample.type must be provided and valid when data.category is not 'Biospecimen' or 'Clinical'.")
+  }
+
+  # 如果提供了PDC.study.identifier，检查其有效性
+  if (!is.null(PDC.study.identifier) && !(PDC.study.identifier %in% valid_study_identifiers)) {
+    stop("Invalid PDC.study.identifier. It must be one of the predefined identifiers.")
+  }
+
+  # 构建基本路径和目录路径
+  base_path <- "./data/clinical tumor sample/"
+  path_content <- c(cancer.type, data.category)
+  directory_path <- file.path(base_path, path_content)
+
+  # 如果给定PDC.study.identifier且路径不存在，则报错
+  if (!is.null(PDC.study.identifier)) {
+    directory_path <- file.path(directory_path, PDC.study.identifier)
+
+    if (!dir.exists(directory_path)) {
+      stop("The specified study identifier directory does not exist: ", directory_path)
+    }
+  }
+
+  # 根据data.category收集相关数据文件
+  data_list <- list()
+
+  # 如果提供了PDC.study.identifier，则直接读取相应文件
+  if (!is.null(PDC.study.identifier)) {
+    # 构建详细的文件路径
+    if (!is.null(data.type)) { directory_path <- file.path(directory_path, data.type) }
+    if (!is.null(sample.type)) { directory_path <- file.path(directory_path, sample.type) }
+    # 读取目录下所有文件
+    files <- list.files(directory_path, recursive = TRUE, full.names = TRUE)
+    if (length(files) == 0) {
+      stop("No files found in the specified directory: ", directory_path)
+    }
+    # 读取文件到数据框列表中
+    data_list <- lapply(files, function(f) {
+      read.delim(f, sep = ",", header = TRUE, check.names = FALSE)
+    })
+  } else {
+    # 如果没有指定PDC.study.identifier，则获取路径下所有可能的文件
+    study_identifier_paths <- list.dirs(directory_path, full.names = TRUE, recursive = FALSE)
+    for (study_path in study_identifier_paths) {
+      files <- list.files(study_path, recursive = TRUE, full.names = TRUE)
+      if (length(files) > 0) {
+        study_data <- lapply(files, function(f) {
+          read.delim(f, sep = ",", header = TRUE, check.names = FALSE)
+        })
+        data_list <- c(data_list, study_data)
+      }
+    }
+  }
+
+  return(data_list)
+}
+
+
+celltype <- read.csv("./data/cancer cell lines/Transcriptome/rnaseq_tpm_20220624.csv",sep = ",",header = TRUE)%>%
+  select(-c(1,2)) %>%
+  slice(1) %>%
+  unlist() %>%
+  unique()
+
+
+cellquery <- function(cancer.type,
+                      cell.type,
+                      data.category,
+                      data.type) {
+  library(dplyr)
+  cancertype <- read.csv("./data/cancer cell lines/model_list_20240110.csv",sep = ",",header = TRUE) %>%
+    select(cancer_type) %>%
+    unlist() %>%
+    unique()
+
+  celltype <- read.csv("./data/cancer cell lines/model_list_20240110.csv",sep = ",",header = TRUE)%>%
+    select(model_id) %>%
+    unlist() %>%
+    unique()
+
+  datacategory <- c("Transcriptome","Proteome","Gene dependence score")
+
+  datatype <- c("intensity","zscore","count","ftpm","tpm","fitness scores_fold change")
+
+}
+
+
+library(dplyr)
+
+read_data_based_on_params <- function(cancer.type, cell.type, data.category, data.type = NULL) {
+
+  # 验证cancer.type是否在cancertype范围内
+  cancer_types <- get_cancer_types() # 假设这是先前定义的获取cancertype的函数
+  if (!(cancer.type %in% cancer_types)) {
+    stop("Invalid cancer.type. Not found in cancer types.")
+  }
+
+  # 验证cell.type是否在celltype范围内
+  cell_types <- get_cell_types() # 假设这是先前定义的获取celltype的函数
+  if (!(cell.type %in% cell_types)) {
+    stop("Invalid cell.type. Not found in cell types.")
+  }
+
+  # 检查两者是否匹配
+  models <- read.csv("./data/cancer cell lines/model.csv", sep=",", header=TRUE)
+  if(!(cancer.type %in% models$cancer_type & cell.type %in% models$cell_line)) {
+    stop("The cell type is not associated with the cancer type in model.csv")
+  }
+
+  # 验证data.category是否在datacategory范围内
+  valid_data_categories <- get_data_categories() # 获取datacategory范围的函数
+  if (!(data.category %in% valid_data_categories)) {
+    stop("Invalid data.category.")
+  }
+
+  # 验证并设置data.type基于data.category
+  valid_data_types <- switch(data.category,
+                             "Transcriptome" = c("count", "fpkm", "tpm"),
+                             "Proteome" = c("intensity", "zscore"),
+                             "Gene dependency score" = "fitness scores_fold change",
+                             stop("Invalid data.category provided.")
+  )
+
+  if(is.null(data.type)) {
+    if(data.category == "Gene dependency score") {
+      data.type <- "fitness scores_fold change"
+    } else {
+      stop("data.type cannot be NULL for the provided data.category.")
+    }
+  } else if (!(data.type %in% valid_data_types)) {
+    stop("Invalid data.type for the selected data.category.")
+  }
+
+  # 构建文件路径
+  file_path <- paste0("./data/cancer cell lines/", data.category, "/", data.type, ".csv")
+
+  # 读取数据
+  # 注意这个仅是例子，根据您的文件结构您可能需要自定义读取逻辑
+  data <- read.csv(file_path, sep = ",", header = TRUE)
+
+  # 如果只指定了cancer.type或cell.type，或者两者都指定了但匹配，执行特定的过滤逻辑
+  if (!is.null(cancer.type)) {
+    data <- data %>% filter(cancer_type == cancer.type)
+  }
+  if (!is.null(cell.type)) {
+    data <- data %>% filter(cell_line == cell.type)
+  }
+
+  return(data)
+}
+
+# 这是调用函数的例子：
+# result <- read_data_based_on_params("Breast Cancer", "Cell_Line_1", "Proteome", "intensity")
+
+
+

@@ -1,0 +1,660 @@
+# 差异蛋白
+rm(list = ls())
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(ggthemes)
+library(cowplot)
+library(limma)
+library(ggplot2)
+library(ComplexHeatmap)
+library(ggrepel)
+
+pro_listfile_n <- list.files('../proteome_data_process/Proteomics tidy Data log2(x+0.001)/',
+                             pattern ="_pro_normal.csv" )
+pron <- sub("_pro_normal.csv","",pro_listfile_n)
+pro_listfile_t <- list.files('../proteome_data_process/Proteomics tidy Data log2(x+0.001)/',
+                             pattern ="_pro_tumor.csv" )
+prot <- sub("_pro_tumor.csv","",pro_listfile_t)
+pront <- intersect(pron,prot)
+cancer_info_w <- read.csv("../pan-cancer metadata.csv",sep = ",",header = TRUE,check.names = FALSE)
+cancer_info_w <- cancer_info_w[-20,]
+
+# 用蛋白质经标准化的数据
+tupro <- data.frame()
+for (i in pront) {
+  path <- paste0('../proteome_data_process/Proteomics tidy Data log2(x+0.001)/',i,"_pro_tumor.csv")
+  data <- read.delim(path,sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+  tupro <- merge(data,tupro,by = "row.names",all = TRUE)
+  rownames(tupro) <- tupro[,1]
+  tupro <- tupro[,-1]
+}
+
+norpro <- data.frame()
+for (i in pront) {
+  path <- paste0('../proteome_data_process/Proteomics tidy Data log2(x+0.001)/',i,"_pro_normal.csv")
+  data <- read.delim(path,sep = ",",header = TRUE,row.names = 1,check.names = FALSE)
+  norpro <- merge(data,norpro,by = "row.names",all = TRUE)
+  rownames(norpro) <- norpro[,1]
+  norpro <- norpro[,-1]
+} 
+
+
+# 找到NA值出现次数小于列数50%的行
+rows_remain_t <- which(rowSums(is.na(tupro)) < ncol(tupro)*0.5)
+tupro_1 <- tupro[rows_remain_t, ] #10165*1445
+
+rows_remain_n <- which(rowSums(is.na(norpro)) < ncol(norpro)*0.5)
+norpro_1 <- norpro[rows_remain_n,] #10237*892
+
+cogene <- intersect(rownames(tupro_1),rownames(norpro_1)) # 9995
+tupro_1 <- normalizeBetweenArrays(tupro_1[cogene,])
+norpro_1 <- normalizeBetweenArrays(norpro_1[cogene,])
+dfpan <- cbind(tupro_1,norpro_1)
+
+# 对每一行的数据执行统计检验，并将结果存储在一个数据框中
+# 对数据框的每一行应用一个函数，在这个函数中，首先创建一个因子变量a,表示"Tumor"和"Normal"两个水平，然后进行方差检验来比较两个样本的方差是否显著不同
+# 根据方差检验的P值，如果p值大于0.05，就执行等方差的t检验，否则执行不等方差的t检验
+pvalue <- apply(dfpan, 1, function(x){
+  a <- factor(c(rep("Tumor",ncol(tupro_1)), rep("Normal",ncol(norpro_1))))
+  fvalue <- var.test(x~a) # 计算因变量在不同水平的自变量a下的方差是否显著不同，执行F检验以比较两个样本与正常总体的方差
+  if (fvalue$p.value > 0.05){
+    t.test(x~a, var.equal = T)
+  }else{
+    t.test(x~a, var.equal = F)
+  }
+})
+
+pan_t_test <- data.frame(ID = row.names(dfpan), 
+                         Pvalue = as.numeric(unlist(lapply(pvalue, function(x) x$p.value))),
+                         log2FC = as.numeric(unlist(lapply(pvalue, function(x) x$estimate[2]-x$estimate[1]))))
+pan_t_test$Padjust <- p.adjust(pan_t_test$Pvalue)
+
+pan_t_test$group <- case_when(
+  pan_t_test$log2FC > 1.5 & pan_t_test$Pvalue < 0.05 ~ "up",
+  pan_t_test$log2FC < -1.5 & pan_t_test$Pvalue < 0.05 ~ "down",
+  TRUE~ 'none'
+)
+pan_t_test$'-log10(pvalue)' <- -log10(pan_t_test$Pvalue) #新增-log10p列
+pan_t_test$group <- factor(pan_t_test$group, levels = c( "up", "down", "none"))
+pan_t_test <- pan_t_test[!(pan_t_test$Pvalue == "0"),]
+
+write.csv(pan_t_test,"./差异分析结果/泛癌差异蛋白.csv")
+
+
+
+# 绘制泛癌层面的差异火山图----
+mycol<- c("#e1703c", "#4091cf", "#d8d8d8")
+# 选出差异最明显的20个gene所在的行
+top20 <- pan_t_test %>%
+  filter(Pvalue < 0.01) %>%
+  arrange(desc(abs(log2FC))) %>%
+  slice_head(n = 20)
+# 当时想在前50个差异蛋白中选出，在样本中出先次数最多的20个，作为一个新的panel
+# 在top前50中再筛选20个（在有surv数据的样本中出现次数最多的(非NA值)，保证在多个癌种中都能检测到）
+# top50 <- pan_t_test %>%
+#   filter(Pvalue < 0.01) %>%
+#   arrange(desc(abs(log2FC))) %>%
+#   slice_head(n = 50)
+# protop50 <- pro_surv[rownames(pro_surv) %in% top50$ID,]
+# non_na_counts <- rowSums(!is.na(protop50))
+# # 根据非NA值数量对行进行排序，取最后20个（因为是降序排序）
+# top_20_indices <- order(non_na_counts, decreasing = TRUE)[1:min(20, nrow(protop50))]
+# pro50_20 <- rownames(protop50[top_20_indices, ])
+
+
+# 除掉前20个gene所在行的数据
+other20 <- anti_join(pan_t_test,top20)
+
+values = alpha(mycol,0.7)
+
+p<- ggplot() + #建立映射
+  geom_point(data = other20, aes(x=log2FC,y= -log10(Pvalue),color = group),size = 3) + #绘制散点
+  scale_colour_manual(name = "", values = alpha(mycol,0.8)) + #自定义散点颜色
+  scale_x_continuous(limits = c(-5, 5),
+                     breaks= seq(-5, 5, by = 2)) + #x轴限制
+  scale_y_continuous(expand = expansion(add = c(2, 0)))+
+  geom_hline(yintercept = c(-log10(0.01)),linewidth = 0.7,color = "grey40",lty = "dashed") + #水平阈值线
+  geom_vline(xintercept = c(-1.5, 1.5),linewidth = 0.7,color = "grey40",lty = "dashed") + #垂直阈值线
+  theme_classic() +
+  theme(axis.title = element_text(size = 15),
+        axis.text = element_text(size = 14),
+        legend.text = element_text(size = 14),
+        plot.margin = margin(15,5.5,5.5,5.5),
+        plot.background = element_rect(fill="white", colour=NA),  # 设置白色背景，无边框线
+        panel.border = element_blank(),  # 移除边框线
+        panel.grid.major = element_blank(),  # 移除主要网格线
+        panel.grid.minor = element_blank());p
+
+p1 <- p + 
+  geom_point(data = top20, aes(x = log2FC, y = -log10(Pvalue),color = group), size = 8,alpha = 0.8) +
+  geom_text_repel(data = top20, aes(x = log2FC, y = -log10(Pvalue),label = ID), size = 3);p1
+
+ggsave(filename = "./PLOT1/泛癌差异蛋白分析.pdf",
+       width = 7,
+       height = 7,
+       device = "pdf") 
+
+
+
+# 查看差异蛋白的 转录组与蛋白质组相关性如何----
+pancort <- read.csv("./相关性结果输出文件/pan_tumor_pro_rna_cor.csv",sep = ",",header = TRUE,row.names = 1, check.names = FALSE)
+decor<- pancort[pancort$symbol %in% top20$ID,]
+range(decor$correlation)
+# [1] 0.09418772 0.73822469
+# 在肿瘤组织与正常组织中具有显著差异的gene(前20个gene), 在T中 转录组与蛋白质组的相关性并不一定大（MYOC,0.09;GPM6A,0.18;ITLN1，0.19）
+
+
+# 看看pan_depro分析 差异蛋白能富集到哪些通路----
+source("./泛癌差异 富集分析函数.R")
+depro <- pan_t_test[pan_t_test$Pvalue < 0.01 & pan_t_test$log2FC>1.5,] # 155个gene
+mm <- pancort[pancort$symbol %in% depro$ID,] # median cor 
+
+dehall <- pan_hall(depro)
+dego <- pan_go(depro)
+# (log2FC>1.5)差异蛋白主要富集在细胞周期相关的通路上
+# (log2FC>2) 差异蛋白无富集通路
+
+
+degsea <- rbind(dehall,dego)
+
+degsea$text_x <- rep(0.03,nrow(degsea))
+degsea$color <-  c( "#e1703c",  rep("#4091cf",6))
+degsea$ID <- c("E2F_TARGETS" ,"GOBP_MITOTIC_CELL_CYCLE_PROCESS" ,"GOBP_MITOTIC_CELL_CYCLE", "GOBP_DNA_CONFORMATION_CHANGE","GOBP_CHROMOSOME_ORGANIZATION" ,     
+               "GOBP_REGULATION_OF_DNA_REPLICATION","GOBP_CELL_CYCLE_PROCESS")
+
+
+# 设置颜色映射
+color_mapping <- degsea %>% 
+  unique() %>% # 取出唯一的 ID 和对应的颜色
+  mutate(ID = as.factor(ID)) # 确保 ID 是因子类型
+degsea$ID <- factor(degsea$ID,
+                    levels =c("E2F_TARGETS" ,"GOBP_MITOTIC_CELL_CYCLE_PROCESS" ,"GOBP_MITOTIC_CELL_CYCLE", "GOBP_DNA_CONFORMATION_CHANGE","GOBP_CHROMOSOME_ORGANIZATION" , "GOBP_REGULATION_OF_DNA_REPLICATION","GOBP_CELL_CYCLE_PROCESS"))
+
+
+p <- ggplot(data = degsea, aes(x = NES, y = ID, 
+                                size = pvalue, color = ID, stroke = 1)) +
+  geom_point(alpha = 0.7) +
+  scale_size_continuous(range = c(3, 10)) +
+  scale_color_manual(values = color_mapping$color) +
+  labs(x = "NES", y = "ID", title = "Pan cancer GSEA") +
+  geom_text(aes(label = ID), size = 3.5, hjust = 1) +
+  theme_classic() +
+  theme(axis.title = element_text(size = 12),
+        axis.text = element_text(size = 8),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(),
+        plot.margin = unit(c(1, 1, 1, 1), "cm"))+
+  scale_x_continuous(limits = c(0.8, 3), expand = c(0, 0));p
+
+
+ggsave('./PLOT1/泛癌差异基因富集分析.pdf',width = 10,height = 6)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 特定癌种的差异蛋白分析upset图----
+
+
+# 特定癌种的所有蛋白的logFC排序做分析GSEA富集分析----
+library(org.Hs.eg.db)
+library(clusterProfiler)
+hallmarkgeneSet <- read.gmt("./h.all.v2023.2.Hs.symbols.gmt") #下载的基因集
+gogeneSet <- read.gmt("./c5.go.v2023.2.Hs.symbols.gmt")
+
+
+hallmarkgsea <- data.frame()
+set.seed(42)
+for (i in 1:length(result_test)){
+  cancer <- cancer_info_w$cancer[match(names(result_test)[i],cancer_info_w$`proteome-PDC study identifier`)]
+  a <- result_test[[i]]$logFC
+  b <- result_test[[i]]$ID
+  c <- as.data.frame(cbind(a,b))
+  colnames(c) <- c("logFC","ID")
+  c$logFC <- as.numeric(c$logFC)
+  d <- arrange(c,desc(logFC))
+  gene_list <- d$logFC
+  names(gene_list) <- d$ID
+  
+  GSEA_enrichment <- GSEA(gene_list, #排序后的gene
+                          TERM2GENE = hallmarkgeneSet, #基因集
+                          pvalueCutoff = 1, #P值阈值
+                          # minGSSize = 10, #最小基因数量
+                          # maxGSSize = 500, #最大基因数量
+                          eps = 0, #P值边界
+                          pAdjustMethod = "BH") #校正P值的计算方法
+  ###条件筛选 
+  #一般认为|NES|>1，NOM pvalue<0.05，FDR（padj）<0.25的通路是显著富集的
+  GSEA_cut <- GSEA_enrichment[GSEA_enrichment$pvalue<0.01 & GSEA_enrichment$p.adjust<0.25 & abs(GSEA_enrichment$NES)>1.5]
+  e <- cbind(GSEA_cut,rep(cancer,nrow(GSEA_cut)))
+  hallmarkgsea <- rbind(hallmarkgsea,e)
+}
+colnames(hallmarkgsea)[12] <- "cancer"
+hallmarkgsea[,2] <- sub("HALLMARK_","",hallmarkgsea[,2])
+
+
+hallmarkgsea$`-log10P` <- -log10(hallmarkgsea$pvalue)
+hallmarkgsea1 <- hallmarkgsea %>% group_by(cancer) %>% 
+  distinct(ID,.keep_all = TRUE)
+hallmarkgsea1$cancer <- factor(hallmarkgsea1$cancer,levels = names(sort(table(hallmarkgsea1$cancer),decreasing = TRUE)))
+hallmarkgsea1$ID <- factor(hallmarkgsea1$ID,levels = names(sort(table(hallmarkgsea1$ID))))
+write.csv(hallmarkgsea,"./DE analysis data/hallmarkgsea(特定癌种的所有蛋白logFC排hallmarkGSEA.pdf).csv")
+
+p <- ggplot(hallmarkgsea1, aes(x = cancer, y = ID, size = `-log10P`, fill = NES)) +
+  geom_point(shape = 21,color = "#B89F6C") + ##B89F6C
+  scale_size_continuous(range = c(4, 10)) +
+  scale_fill_gradient2(low = "#FFD36C",mid = "white", high = "#006E62") + #"#006E62"
+  # scale_fill_gradient(low = "#006E62", high = "#FFD36C") +
+  labs(title = "", x = "Cancer", y = "ID", fill = "NES",size = "-log10P") +
+  theme_minimal() +
+  theme(text = element_text(size = 9),
+        plot.margin = unit(c(1, 1, 1, 1), "cm"),# 调整图的边距
+        legend.position = "right",# 将颜色图例移到右侧
+        axis.text.x.bottom = element_text(vjust = 0),
+        legend.text = element_text(size = 9),# 调整图例文字大小
+        panel.grid.major=element_line(colour=NA),
+        # panel.background = element_rect(fill = "#FFF9EE"),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        panel.grid.minor = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank());p
+ggsave("./DE analysis data/特定癌种的所有蛋白logFC排序hallmarkGSEA.pdf",height =12,width = 12)
+
+
+# GO分析涉及到的通路特别多 这里就只可视化在9种以上癌种中富集到的通路
+gogsea <- data.frame()
+set.seed(42)
+for (i in 1:length(result_test)){
+  cancer <- cancer_info_w$cancer[match(names(result_test)[i],cancer_info_w$`proteome-PDC study identifier`)]
+  a <- result_test[[i]]$logFC
+  b <- result_test[[i]]$ID
+  c <- as.data.frame(cbind(a,b))
+  colnames(c) <- c("logFC","ID")
+  c$logFC <- as.numeric(c$logFC)
+  d <- arrange(c,desc(logFC))
+  gene_list <- d$logFC
+  names(gene_list) <- d$ID
+  
+  GSEA_enrichment <- GSEA(gene_list, #排序后的gene
+                          TERM2GENE = gogeneSet, #基因集
+                          pvalueCutoff = 1, #P值阈值
+                          # minGSSize = 10, #最小基因数量
+                          # maxGSSize = 500, #最大基因数量
+                          eps = 0, #P值边界
+                          pAdjustMethod = "BH") #校正P值的计算方法
+  ###条件筛选 
+  #一般认为|NES|>1，NOM pvalue<0.05，FDR（padj）<0.25的通路是显著富集的
+  GSEA_cut <- GSEA_enrichment[GSEA_enrichment$pvalue<0.01 & GSEA_enrichment$p.adjust<0.25 & abs(GSEA_enrichment$NES)>1.5]
+  e <- cbind(GSEA_cut,rep(cancer,nrow(GSEA_cut)))
+  gogsea <- rbind(gogsea,e)
+}
+
+colnames(gogsea)[12] <- "cancer" 
+gogsea1 <- gogsea %>% group_by(cancer) %>% #12916
+  distinct(ID,.keep_all = TRUE) # 12205
+# 筛选至少在9种以上癌症中出现的通路
+gogsea2 <- gogsea1 %>% group_by(ID) %>% filter(n()>9)
+
+gogsea2$category <- substr(gogsea2$Description,start = 3,stop = 4)
+gogsea2$ID <- sub("^[^_]*_", "", gogsea2$ID)
+gogsea2$cancer <- factor(gogsea2$cancer,levels = names(sort(table(gogsea2$cancer),decreasing = TRUE)))
+gogsea2$ID <- factor(gogsea2$ID,levels = names(sort(table(gogsea2$ID))))
+gogsea2$`-log10P` <- -log10(gogsea2$pvalue)
+write.csv(gogsea,"./DE analysis data/gogsea(特定癌种的所有蛋白logFC排goGSEA.pdf).csv")
+
+pg <- ggplot(gogsea2, aes(x = cancer, y = ID, size = `-log10P`, fill = NES)) +
+  geom_point(shape = 21,color = "#B89F6C") +
+  scale_size_continuous(range = c(2, 10)) +
+  scale_fill_gradient2(low = "#FFD36C",mid = "white", high = "#006E62") +  # #006E62  #FFD36C
+  labs(title = "", x = "cancer", y = "ID", size = "-log10P", fill = "NES") +
+  theme_minimal() +
+  theme(text = element_text(size = 9),
+        plot.margin = unit(c(1, 1, 1, 1), "cm"),# 调整图的边距
+        legend.position = "right",# 将颜色图例移到右侧
+        axis.text.x.bottom = element_text(vjust = 0),
+        legend.text = element_text(size = 9),# 调整图例文字大小
+        panel.grid.major=element_line(colour=NA),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        panel.grid.minor = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank())+
+  facet_grid(rows = vars(category), scales = "free",space = "free")+
+  theme(
+    strip.background = element_rect(fill = "#98B0A9",color = "white"),
+    strip.text = element_text(color = "white"),
+    panel.border = element_blank (),
+    strip.text.y = element_text(
+      size = 10, face = "bold"), # 这里设置y轴方向的字体类型
+    panel.background = element_rect(fill = "#FFF9EE")
+  );pg
+ggsave("./DE analysis data/特定癌种的所有蛋白logFC排序goGSEA.pdf",height =7,width = 12)
+
+
+
+# 每个癌种上下调蛋白富集的通路----
+
+# 上调蛋白富集通路
+uphallmarkgsea <- data.frame()
+set.seed(42)
+for (i in 1:length(result_test)){
+  cancer <- cancer_info_w$cancer[match(names(result_test)[i],cancer_info_w$`proteome-PDC study identifier`)]
+  data <- result_test[[i]]
+  up <- data[data$group == "up",]
+  a <- up$logFC
+  b <- up$ID
+  c <- as.data.frame(cbind(a,b))
+  colnames(c) <- c("logFC","ID")
+  c$logFC <- as.numeric(c$logFC)
+  d <- arrange(c,desc(logFC))
+  gene_list <- d$logFC
+  names(gene_list) <- d$ID
+  
+  GSEA_enrichment <- GSEA(gene_list, #排序后的gene
+                          TERM2GENE = hallmarkgeneSet, #基因集
+                          pvalueCutoff = 1, #P值阈值
+                          # minGSSize = 10, #最小基因数量
+                          # maxGSSize = 500, #最大基因数量
+                          eps = 0, #P值边界
+                          pAdjustMethod = "BH") #校正P值的计算方法
+  ###条件筛选 
+  #一般认为|NES|>1，NOM pvalue<0.05，FDR（padj）<0.25的通路是显著富集的
+  GSEA_cut <- GSEA_enrichment[GSEA_enrichment$pvalue<0.01 & GSEA_enrichment$p.adjust<0.25 & abs(GSEA_enrichment$NES)>1.5]
+  e <- cbind(GSEA_cut,rep(cancer,nrow(GSEA_cut)))
+  uphallmarkgsea <- rbind(uphallmarkgsea,e)
+}
+colnames(uphallmarkgsea)[12] <- "cancer"
+uphallmarkgsea[,2] <- sub("HALLMARK_","",uphallmarkgsea[,2])
+uphallmarkgsea$group <- rep("up",nrow(uphallmarkgsea))
+uphallmarkgsea$`-log10P` <- -log10(uphallmarkgsea$pvalue)
+
+downhallmarkgsea <- data.frame()
+set.seed(42)
+for (i in 1:length(result_test)){
+  cancer <- cancer_info_w$cancer[match(names(result_test)[i],cancer_info_w$`proteome-PDC study identifier`)]
+  data <- result_test[[i]]
+  down <- data[data$group == "down",]
+  a <- down$logFC
+  b <- down$ID
+  c <- as.data.frame(cbind(a,b))
+  colnames(c) <- c("logFC","ID")
+  c$logFC <- as.numeric(c$logFC)
+  d <- arrange(c,desc(logFC))
+  gene_list <- d$logFC
+  names(gene_list) <- d$ID
+  
+  GSEA_enrichment <- GSEA(gene_list, #排序后的gene
+                          TERM2GENE = hallmarkgeneSet, #基因集
+                          pvalueCutoff = 1, #P值阈值
+                          # minGSSize = 10, #最小基因数量
+                          # maxGSSize = 500, #最大基因数量
+                          eps = 0, #P值边界
+                          pAdjustMethod = "BH") #校正P值的计算方法
+  ###条件筛选 
+  #一般认为|NES|>1，NOM pvalue<0.05，FDR（padj）<0.25的通路是显著富集的
+  GSEA_cut <- GSEA_enrichment[GSEA_enrichment$pvalue<0.01 & GSEA_enrichment$p.adjust<0.25 & abs(GSEA_enrichment$NES)>1.5]
+  e <- cbind(GSEA_cut,rep(cancer,nrow(GSEA_cut)))
+  downhallmarkgsea <- rbind(downhallmarkgsea,e)
+}
+colnames(downhallmarkgsea)[12] <- "cancer"
+downhallmarkgsea[,2] <- sub("HALLMARK_","",downhallmarkgsea[,2])
+downhallmarkgsea$group <- rep("down",nrow(downhallmarkgsea))
+downhallmarkgsea$`-log10P` <- -log10(downhallmarkgsea$pvalue)
+
+updownhallmarkgsea <- rbind(uphallmarkgsea,downhallmarkgsea)
+
+
+
+# 列出所有癌种的差异蛋白，筛选出现次数最多的蛋白----
+# 上调蛋白list upgenedf
+
+result_upgene <- upgenedf %>%
+  group_by(gene) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+
+
+
+
+
+
+
+# （原）火山图绘制----
+# 自定义颜色
+mycol<- c( "#d9586e", "#3c74bb", "#d8d8d8")
+#自定义主题：
+mytheme<- theme_classic +
+  theme(axis.title = element_text(size = 15),
+        axis.text = element_text(size = 14),
+        legend.text = element_text(size = 14),
+        plot.margin = margin(15,5.5,5.5,5.5))
+
+# 差异分析绘制火山图
+for(i in 1:length(result_test)){
+  n = names(result_test)[i]
+  p<- ggplot(result_test[[i]], aes(x=log2FC,y= -log10(Pvalue),color = group)) + #建立映射
+    geom_point(size = 2.2) + #绘制散点
+    scale_colour_manual(name = "", values = alpha(mycol, 0.7)) + #自定义散点颜色
+    scale_x_continuous(limits = c(-5, 5),
+                       breaks= seq(-5, 5, by = 2)) + #x轴限制
+    scale_y_continuous(expand = expansion(add = c(2, 0)))+
+                       # limits= c(0, 40),
+                       # breaks= seq(0, 40, by = 10)) + #y轴限制
+    geom_hline(yintercept = c(-log10(0.05)),linewidth = 0.7,color = "black",lty = "dashed") + #水平阈值线
+    geom_vline(xintercept = c(-1.5, 1.5),linewidth = 0.7,color = "black",lty = "dashed") + #垂直阈值线
+    mytheme
+
+  path = paste0("./plot/DE/",n,".pdf")
+  ggsave2(filename = path,
+                  width = 7,
+                  height = 7,
+                  device = "pdf")
+  }
+
+# 每个癌种上调/下调的的gene,富集通路（可与相关性计算的富集通路进行对比）----
+# 下调gene，富集通路
+library(clusterProfiler)
+
+result_test_1 <- result_test
+for(i in 1:length(result_test_1)){
+  names(result_test_1)[i] <- cancer_info_w$cancer_type[match(names(result_test_1)[i],cancer_info_w$proteomics)]
+}
+
+geneSet <- read.gmt("./GSEA示例/h.all.v2023.1.Hs.symbols.gmt") #下载的基因集
+geneSet$term <- sub("HALLMARK_","",geneSet$term)
+
+enrich_cut <- list()
+for(i in 1:12){
+  a <- result_test_1[[i]]
+  b <- a[a$Pvalue < 0.05 & abs(a$log2FC) >1.5,]
+  c <- arrange(b,desc(log2FC))
+  gene_list <- c$log2FC
+  names(gene_list) <- c$ID
+  
+  GSEA_enrichment <- GSEA(gene_list, #排序后的gene
+                          TERM2GENE = geneSet, #基因集
+                          pvalueCutoff = 1, #P值阈值
+                          # minGSSize = 10, #最小基因数量
+                          # maxGSSize = 500, #最大基因数量
+                          eps = 0, #P值边界
+                          pAdjustMethod = "BH") #校正P值的计算方法
+  ###条件筛选 
+  #一般认为|NES|>1，NOM pvalue<0.05，FDR（padj）<0.25的通路是显著富集的
+  GSEA_cut <- GSEA_enrichment[GSEA_enrichment$pvalue<0.05 & GSEA_enrichment$p.adjust<0.25 & abs(GSEA_enrichment$NES)>1.5]
+  enrich_cut[[i]] <- GSEA_cut
+  names(enrich_cut)[[i]] <- names(result_test_1)[[i]]
+  # enrich_list[[i]] <- GSEA_enrichment 经验证 NES全部大于0
+}
+
+# 把所有癌种的富集到的通路可视化
+df <- data.frame(ID = character(0),NES = character(0),cancer = character(0))
+for(i in 1:length(enrich_cut)){
+  n <- names(enrich_cut)[[i]]
+  a <- enrich_cut[[i]]
+  b <- as.data.frame(cbind(a$ID,a$NES))
+  colnames(b) <- c('ID',"NES")
+  b$cancer <- rep(n,nrow(a))
+  df <- rbind(df,b)
+}
+
+
+# 安装并加载包
+# install.packages("ggchicklet", repos = "https://cinc.rud.is")
+library(tidyverse)
+library(ggplot2)
+library(ggchicklet) 
+library(prismatic)
+library(ggtext)
+
+df1 <- df[df$NES >0,]
+df1 <- df1 %>%
+  mutate(ID = reorder(ID, table(ID)[as.character(ID)]),
+         cancer = factor(cancer, levels = unique(cancer)[order(unique(cancer), decreasing = TRUE)]))
+df2 <- df[df$NES <0,]
+
+
+p <- ggplot(df1,aes(x = ID, y = NES, fill = cancer)) +
+  geom_chicklet(aes(color = after_scale(clr_darken(fill, 0.25))),alpha = .6,show.legend = FALSE) +
+  geom_area() +
+  scale_fill_manual(values = c("HCC"="#e3ac6d","UCEC" = "#9d7bb8","BRCA" = "#836fac",
+                               "CCRCC" ="#6caf83","COAD" = "#d9586e",
+                               "COADREAD"= "#3c74bb","GBM"= "#b87b9d",
+                               "HNSCC"= "#6d97e3","LUAD" = "#f85b2b",
+                               "LUSC" = "#bb3c74","OV" ="#798eb8","PDAC" = "#b8a279")) +
+  labs(title = "",x = "", y = "NES") +
+  # , base_family="Consolas"
+  theme_minimal(base_size=9) +
+  theme(
+    # plot.title.position = 'plot',
+    plot.title = element_markdown(face = 'bold', size = 15, hjust = 0),
+    # plot.margin = margin(10, 15, 10, 10),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    # axis.text = element_text(color = "gray10"),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 8),
+    axis.text.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank(),
+  ) +
+  guides(fill=guide_legend(nrow = 2, byrow = FALSE, reverse = TRUE))+
+  coord_flip();p
+  # geom_point(aes(x =0, y = 5, fill = cancer), size=3, alpha = .75, shape = 21) 
+
+ggsave(p, filename = "./plot/DE/depro_pathway_up.pdf",width =12,height =8)
+
+
+p2 <-   ggplot(df2,aes(x = ID, y = NES, fill = cancer)) +
+  geom_chicklet(aes(color = after_scale(clr_darken(fill, 0.25))),alpha = .75,show.legend = FALSE) +
+  # geom_point(aes(x =0, y = 5, fill = cancer), size=4, alpha = .75, shape = 21) +
+  geom_area() +
+  scale_fill_manual(values = c("HCC"="#e3ac6d","UCEC" = "#9d7bb8","BRCA" = "#836fac",
+                               "CCRCC" ="#6caf83","COAD" = "#d9586e",
+                               "COADREAD"= "#3c74bb","GBM"= "#b87b9d",
+                               "HNSCC"= "#6d97e3","LUAD" = "#f85b2b",
+                               "LUSC" = "#bb3c74","OV" ="#798eb8","PDAC" = "#b8a279")) +
+  labs(title = "",x = "", y = "NES") +
+  theme_minimal(base_size=9) +
+  theme(
+    # plot.title.position = 'plot',
+    plot.title = element_markdown(face = 'bold', size = 15, hjust = 0),
+    plot.margin = margin(10, 15, 10, 10),
+    # axis.text = element_text(color = "gray10"),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 8),
+    axis.text.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank(),
+  ) +
+  guides(fill=guide_legend(nrow = 2, byrow = FALSE, reverse = TRUE))+
+  coord_flip();p2
+  
+ggsave(p2, filename = "./plot/DE/depro_pathway_down.pdf",width =12,height =3)
+
+
+#图例制作
+
+ggplot(df, aes(x = 1, y = 1, fill = cancer)) +
+  geom_tile() +
+  scale_fill_manual(values = c("HCC"="#e3ac6d","UCEC" = "#9d7bb8",
+                               "CCRCC" ="#6caf83","COAD" = "#d9586e",
+                               "COADREAD"= "#3c74bb","GBM"= "#b87b9d",
+                               "HNSCC"= "#6d97e3","LUAD" = "#f85b2b",
+                               "LUSC" = "#bb3c74","OV" ="#798eb8","PDAC" = "#b8a279")) 
+  # guides(fill = guide_legend(title = "cancer", override.aes = list(color = NULL))) +
+  theme_void()  # 用于去除多余的标签和轴
+
+
+# 上调 下调的基因分别存放在数据框中
+up_df <- data.frame(gene = character(),cancer = character())
+down_df <- data.frame(gene = character(),cancer = character())
+
+for(i in 1:length(result_test_1)){
+  data <- result_test_1[[i]]
+  n <- names(result_test_1)[i]
+  up_data <- data[data$lable == 'up',]$ID
+  cancer <- rep(n,length(up_data))
+  a <- as.data.frame(cbind(up_data,cancer))
+  up_df <- rbind(up_df,a)
+  
+  
+  down_data <- data[data$lable == 'down',]$ID
+  cancer <- rep(n,length(down_data))
+  b <- as.data.frame(cbind(down_data,cancer))
+  down_df <- rbind(down_df,b)
+}
+
+uni_up_df <- up_df %>% group_by(cancer) %>% reframe(unique(up_data))
+colnames(uni_up_df) <- c('cancer','gene')
+uni_up_df$value <- rep(c("1"),nrow(uni_up_df))
+uni_down_df <- down_df %>% group_by(cancer) %>% reframe(unique(down_data))
+
+library(tibble)
+updf <- spread(uni_up_df,key = gene,value = value)
+updf <- as.matrix(updf)
+rownames(updf) <- updf[,1]
+updf <- updf[,-1]
+updf[is.na(updf)] <- 0
+updf <- updf[-7,]
+updf <- updf[,colSums(updf != 0)>0]
+
+Heatmap(updf,
+        col = c("white","#b87b9d"),
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
+        show_column_names = FALSE)
+
+# 问题，LUAD的差异蛋白数量巨大，是不是与蛋白质组数据有关
+# 如何可视化差异蛋白分析结果（可以做一个差异蛋白 的GSEA 富集分析），看与之前的富集通路有无共性
+
+
+
+
+
+
+  
+
+

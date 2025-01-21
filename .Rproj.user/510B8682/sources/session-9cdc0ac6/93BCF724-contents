@@ -1,0 +1,47 @@
+rm(list = ls())
+library(tidyverse)
+library(KEGGREST)
+library(readxl)
+
+mm <- read_xlsx("./KEGG metabolism/代谢通路1.xlsx",col_names = FALSE)
+colnames(mm) <- c("entry","name","class")
+mm$entry <- paste0("hsa",mm$entry)
+
+
+hsa_kegg <- as.data.frame(keggList("pathway","hsa"))
+colnames(hsa_kegg) <- "pathway"
+hsa <- hsa_kegg %>% separate(pathway, into = c("name", "hsa"), sep = " - ")
+
+hsa_metabolism <- mm[mm$entry %in% intersect(rownames(hsa),mm$entry),] # 84个代谢通路
+
+kegg_metab <- data.frame("entry" = character(0),
+                         "pathway" = character(0),
+                         # "module" = character(0),
+                         "gene" = character(0),
+                         "class" = character(0))
+for(i in 1:84){
+  entry <- hsa_metabolism$entry[i]
+  b <- keggGet(entry)
+  c <- as.data.frame(b[[1]]$GENE)
+  # if ("MODULE" %in% names(b[[1]])){
+  #   module <- b[[1]]$MODULE
+  # } else{
+  #   module <- "NA"
+  # }
+  #只保留带基因名的偶数行
+  even_row <- seq(2,nrow(c),by = 2)
+  d <- as.data.frame(c[even_row,])
+  e <- d %>%
+    separate("c[even_row, ]", into = c("gene", "Column2"), sep = ";")
+  gene <- as.character(unique(e$gene))
+  pathway = hsa_metabolism$name[i]
+  class <- b[[1]]$CLASS
+  df <- cbind(entry,pathway,gene,class)
+  kegg_metab <- rbind(kegg_metab,df)
+}
+
+kegg_metab$class <- sub("Metabolism; ","",kegg_metab$class)
+write.csv(kegg_metab,"./KEGG metabolism/新版代谢通路(无module).csv")
+
+kegg_metab1 <- split(kegg_metab$gene,kegg_metab$pathway) # 列表
+

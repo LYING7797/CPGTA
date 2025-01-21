@@ -1,0 +1,59 @@
+(1) cptod（临床蛋白质组肿瘤多组学数据下载）：这个功能允许用户下载集成的数据集，确保能够轻松访问全面的多组学数据。
+
+(2) cptca（临床蛋白质组肿瘤相关性分析）：这个工具便于探索多组学数据内的关联性，提供对不同数据类型之间相互依赖性的洞察。
+
+(3) cptda（临床蛋白质组肿瘤差异分析）：用户可以执行差异分析，以识别数据中不同条件或组之间的显著变化。
+
+(4) cptic（临床蛋白质组肿瘤免疫亚型分类）：这个功能根据肿瘤样本的免疫学特征进行分类，有助于理解肿瘤微环境。
+
+(5) cptsa（临床蛋白质组肿瘤生存分析）：这个工具允许分析生存数据，将临床结果与分子特征相关联。
+这个函数有什么作用？
+设定某个癌种，某个蛋白，高表达，低表达与生存的关系
+数据：
+pdc_cancer_info(癌症类型和pdc的对应关系)
+clinical数据，该数据的数据文件结构为
+Clinical
+  -PDC编号的一系列文件夹
+    -PDC编号的生存信息csv文件
+  
+函数的输入参数为：癌症类型，组学类型，基因名称
+1.cancer.type的默认范围是cancer-PDC info.csv文件中cancer type和cancer type abbreviation列的值
+2.gene目前没有默认范围，先计算指定癌种的所有gene与生存的关系，计算完之后再从装挑选指定gene的生存分析并以画图展示
+
+3,组学类型的有效范围为data.category的默认范围是Transcriptome，Proteome
+根据cancer.type找到对应的pdc_cancer_info中对应的PDC编号，再读取相应PDC编号的文件
+4. 当输入参数为Transcriptome时，读取data1文件夹下Transcriptome文件夹中相应PDC编号，包含tumor_nor.csv后缀的文件为gene表达情况
+5. 当输入参数为Proteome时，读取data1文件夹下Proteome文件夹中相应PDC编号，包含tumor_nor.csv后缀的文件为gene表达情况
+6.生存分析的代码参考以下内容：
+# 只保留"Vital Status"为dead活alive的样本
+clinical1 <- clinical[clinical$`Vital Status` %in% c("Alive","Dead"),]
+clinical1$`Vital Status` <- ifelse(clinical1$`Vital Status`  == 'Dead',1,0)
+
+# 存活但days to death值缺失的病例
+na_and_alive <- is.na(clinical1$`Days to Death`) & (clinical1$`Vital Status` == 0)
+# 将这些行的Days to Death替换为Days to Last Known Disease Status的值
+clinical1$`Days to Death`[na_and_alive] <- ifelse(!is.na(clinical1$`Days to Last Known Disease Status`[na_and_alive]),clinical1$`Days to Last Known Disease Status`[na_and_alive],
+                                                     clinical1$`Days to Last Follow Up`[na_and_alive]) 
+# 删掉研究开始前就死亡的病例以及Days to Death为NA的病例
+clinical2 <- clinical1[clinical1$`Days to Death` >= 0 & !is.na(clinical1$`Days to Death`), ]
+clinical_m <- merge(clinical2,m,by.x = "Cases Submitter ID",by.y = "sample")
+
+km.by.pro <- survfit(Surv(`Days to Death`, `Vital Status`) ~ Cluster, data = clinical_m)
+logrank_test <- survdiff(Surv(`Days to Death`, `Vital Status`) ~ Cluster, data = clinical_m);logrank_test
+# 生成并美化生存曲线图
+p <-  ggsurvplot(km.by.pro, # 拟合对象
+                 data = clinical_m,  # 数据来源
+                 # conf.int = TRUE, # 显示置信区间)
+                 pval = TRUE, # 显示P值
+                 surv.median.line = "hv",  # 中位生存时间线以水平("h")和垂直("v")线显示
+                 risk.table = TRUE, # 显示风险表
+                 risk.table.height = .25, # 风险表的高度
+                 xlab = "Time in days", # X轴标签
+                 ylab = "Overall Survival Probability", # Y轴标签
+                 xlim = c(0, 1000), # 限制x轴范围为0到1200天
+                 legend.title = "" # 不显示图例标题
+                 # legend.labs = c("Female", "Male"), # 图例标签
+                 # palette = "hue"
+                 );p # 使用“hue”调色板
+6.输入参数缺少的，给出报错信息
+7.输入参数不在默认范围内的，给出报错信息
