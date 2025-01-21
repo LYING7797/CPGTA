@@ -174,13 +174,6 @@ cptod <- function(cancer.type,
   }
 }
 
-result1 <- cptod(
-  cancer.type = "BT",
-  data.category = "Clinical data",
-  PDC.study.identifier = NULL,
-  data.type = NULL,
-  sample.type = NULL)
-
 
 
 
