@@ -16,16 +16,28 @@ install.packages("devtools")
 # Install cptca from GitHub
 devtools::install_github("LYING7797/CPGTA")
 ```
-
 Data Required
-Before using the CPGTA package, the necessary data will be automatically downloaded during the installation process. The data will be stored in the data and data1 folders within your project directory.
+The necessary data files are stored in two Google Drive folders: data and data1. Before using the CPGTA package, you need to manually download the files from these folders and place them in the CPGTA package's root directory (the directory where the DESCRIPTION file is located).
 
-The download process will occur automatically when you load the package. If for some reason the data is not downloaded correctly, you can manually trigger the download by running:
+Steps:
+1.Download the files from the following Google Drive links:
+https://drive.google.com/drive/folders/1Vl5YwTx1q7tTx9RHdNMqnQptH8SNUqm4?usp=sharing for the data folder.
+https://drive.google.com/drive/folders/1sExi5ZjhfP8QwD9tVvBPLfdaI4HmGCMF?usp=sharing for the data1 folder.
+
+2.Place the files you downloaded into the data and data1 folders inside the root directory of the CPGTA package (the directory where the DESCRIPTION file is located).
+
+3.Check the folder structure:
+The root directory of the CPGTA package should contain two folders: data and data1.
+The data files (cancer-PDC info.csv, etc.) should be placed inside these respective folders.
+Once the files are downloaded and placed in the correct directories, you can load the CPGTA package and begin using it.
+
+Manually Downloading Data
+If the data was not automatically downloaded or you need to update the data, you can manually trigger the download function by running:
 
 ```{r}
-# Manually trigger the download of data
 install_data()
 ```
+
 Notes:
 The data is hosted on Google Drive and will be automatically downloaded during the installation of the package.
 The download process will place the data in the data1/ directory inside your working directory.
