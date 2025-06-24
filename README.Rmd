@@ -1,0 +1,213 @@
+
+# CPGTA - Clinical ProteoGenomics Tumor Analysis
+## Overview
+
+The CPGTA package is designed for processing and analyzing clinical cancer-related ProteoGenomics data, including multi-omics data download, correlation analysis, differential analysis, immunosubtype classification, and survival analysis. The package supports various types of omics data such as transcriptomics, proteomics, and phosphoproteomics.
+
+
+
+## Installation
+
+You can install the latest version of the `CPGTA` package from GitHub using the `devtools` package:
+
+```{r cars}
+# Install devtools if not already installed
+install.packages("devtools")
+
+# Install cptca from GitHub
+devtools::install_github("LYING7797/CPGTA")
+```
+
+## Functions
+
+cptod()
+This function processes clinical, biospecimen, and other omics data types, performs data retrieval, and merges them for analysis.
+
+Arguments:
+cancer.type: The cancer type to analyze.
+(valid range: 
+cancer_type                              abbreviation
+Ovarian Serous Cystadenocarcinoma        OV        
+Colon Adenocarcinoma                     COAD      
+Breast Invasive Carcinoma                BRCA      
+Uterine Corpus Endometrial Carcinoma     UCEC      
+Clear Cell Renal Cell Carcinoma          CCRCC     
+Lung Adenocarcinoma                      LUAD      
+Pediatric Brain Tumors                   Brain Cancer
+Hepatocellular Carcinoma                 LIHC      
+Glioblastoma                             GBM       
+Early Onset Gastric Cancer               Gastric Cancer
+Head and Neck Squamous Cell Carcinoma    HNSCC     
+Lung Squamous Cell Carcinoma             LUSC      
+Pancreatic Ductal Adenocarcinoma         PDAC      
+Non-Clear Cell Renal Cell Carcinoma      Non-ccRCC 
+Oral Squamous Cell Carcinoma             OSCC )
+ 
+data.category: The omics data category 
+(valid range:
+Biospecimen
+Clinical data
+Copy Number Variation
+Simple Nucleotide Variation
+Transcriptome
+Proteome
+Phosphoproteome).
+
+PDC.study.identifier: Optional PDC study identifier.
+data.type: Optional data type ("Tidied","Normalized").
+sample.type: Optional sample type ("normal", "tumor").
+
+Example:
+```{r}
+# example
+clinical_data <- cptod(
+  cancer.type = "BRCA",
+  data.category = "Clinical data"
+)
+
+
+all_rna_data <- cptod(
+  cancer.type = "LUAD",
+  data.category = "Transcriptome"
+)
+
+snv_data <- cptod(
+  cancer.type = "COAD",  
+  data.category = "Simple Nucleotide Variation"
+)
+
+result2 <- cptod(
+  cancer.type = "OV",
+  data.category = "Biospecimen",
+  PDC.study.identifier = "PDC000113",
+  data.type = NULL,
+  sample.type = NULL)
+
+
+result3 <- cptod(
+  cancer.type = "OV",
+  data.category = "Transcriptome",
+  PDC.study.identifier = NULL,
+  data.type = "Normalized",
+  sample.type = "tumor")
+
+result3 <- cptod(
+  cancer.type = "OV",
+  data.category = "Transcriptome",
+  PDC.study.identifier = NULL,
+  data.type = NULL,
+  sample.type = "tumor")
+
+result5 <- cptod(
+  cancer.type = "PDAC",
+  data.category = "Proteome",
+  PDC.study.identifier = NULL,
+  data.type = NULL,
+  sample.type = "tumor")
+
+result6 <- cptod(
+  cancer.type = "UCEC",
+  data.category = "Phosphoproteome",
+  PDC.study.identifier = "PDC000126",
+  data.type = c("Tidied","Normalized"),
+  sample.type = c("tumor","normal"))
+
+```
+
+
+cptca()
+This function performs correlation analysis between two omics categories (e.g., Transcriptome and Proteome) for a specified cancer type and gene. It returns correlation data and a boxplot visualization.
+
+Arguments:
+gene.name: The name of the gene to focus on.
+cancer.type: The cancer type to analyze (e.g., "BRCA").
+data.category: A vector containing two omics categories ("Transcriptome", "Proteome", "Phosphoproteome"，e.g., c('Transcriptome', 'Proteome')).
+
+```{r}
+res <- cptca(
+  gene.name    = "TP53",
+  cancer.type  = "OV",
+  data.category = c("Transcriptome", "Proteome"))
+```
+
+cptda()
+This function performs differential expression analysis using log2 fold-change threshold for gene expression data and generates a volcano plot.
+
+Arguments:
+@param cancer.type: The cancer type to analyze (e.g., "BRCA").
+@param data.category: The omics category ("Transcriptome"， "Proteome").
+@param log2FC: The log2 fold-change threshold(Must be numeric, with at most one decimal place.).
+@param top.gene: The number of top genes to plot based on significance (maximum of 20).
+
+```{r}
+
+res <- cptda (
+  cancer.type  = "BRCA",
+  data.category = "Proteome",
+  log2FC       = 1.5,  
+  top.gene     = 10    
+)
+
+# The return value res$diff_table is the differential analysis results table (gene, log2FC, p.value, negLog10P, diff), and res$volcano_plot is a ggplot2 object that can be saved or edited further.
+
+```
+
+cptic()
+This function retrieves data related to specific PDC identifiers and classified samples for a given cancer type and omics category.
+
+Arguments:
+@param cancer.type: The cancer type (e.g., "BRCA").
+@param data.category: The omics data category  "Transcriptome" "Proteome").
+
+example:
+```{r}
+result_rna <- cptic(cancer.type = "BRCA", data.category = "Transcriptome")
+print(result_rna)
+
+result_pro <- cptic(cancer.type = "GBM", data.category = "Proteome")
+print(result_pro)
+
+```
+
+
+cptsa()
+This function performs survival analysis based on gene expression data for a given cancer type and gene of interest.
+
+Arguments:
+@param cancer.type: The cancer type (e.g., "OV").
+@param data.category: The omics data category ("Transcriptome", "Proteome").
+@param gene.name: The gene to analyze.
+
+Example:
+```{r}
+res <- cptsa(
+  cancer.type  = "OV",
+  data.category = "Proteome",
+  gene.name = "TP53"
+  )
+```
+
+cptsnv()
+This function performs comprehensive SNV (Simple Nucleotide Variation) analysis for a given cancer type or PDC study identifier, generating various visualizations and statistical summaries.
+
+Arguments:
+@param cancer.type: The cancer type (e.g., "LUAD", "BRCA"). If NULL, PDC.study.identifier must be provided.
+@param PDC.study.identifier: The PDC study identifier(s). Required if cancer.type is NULL.
+@param top_n_genes: Number of top mutated genes to analyze in somatic interaction plots (default: 20).
+@param min_mut_freq: Minimum mutation frequency threshold for filtering (default: 0.05).
+
+```{r}
+res <- cptsnv(
+  cancer.type = "LUAD",
+  PDC.study.identifier = NULL,
+  top_n_genes = 20,
+  min_mut_freq = 0.05
+  )
+```
+
+
+
+
+License
+This package is licensed under the MIT license. See the LICENSE file for details.
+
