@@ -4,8 +4,6 @@
 
 The CPGTA package is designed for processing and analyzing clinical cancer-related ProteoGenomics data, including multi-omics data download, correlation analysis, differential analysis, immunosubtype classification, and survival analysis. The package supports various types of omics data such as transcriptomics, proteomics, and phosphoproteomics.
 
-All data in the "data1" folder can also be accessed via the following link: https://drive.google.com/drive/folders/1Yr_msBFVwu26F4MwGBgbAu0255vb02Eq?usp=drive_link
-
 
 ## Installation
 
@@ -17,6 +15,9 @@ install.packages("devtools")
 
 # Install cptca from GitHub
 devtools::install_github("LYING7797/CPGTA")
+
+(All data in the "data1" folder can also be accessed via the following link: https://drive.google.com/drive/folders/1Yr_msBFVwu26F4MwGBgbAu0255vb02Eq?usp=drive_link.
+Put the "data1" folder in the directory where the CPTGA package folder is located)
 ```
 
 
