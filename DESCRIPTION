@@ -12,7 +12,12 @@ Imports:
     ggplot2,
     dplyr,
     survival,
-    survminer
+    survminer,
+    ggpubr,
+    googledrive,
+    DESeq2,
+    maftools,
+    tidyr
 Depends:
     R (>= 4.2.3)
 Roxygen: list(markdown = TRUE)
