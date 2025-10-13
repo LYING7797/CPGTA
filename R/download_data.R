@@ -2,17 +2,28 @@
 #'
 #' @param folder_id Google Drive folder ID to download (e.g., "1Yr_msBFVwu26F4MwGBgbAu0255vb02Eq")
 #' @param local_dir Local directory to save the files. Default is current working directory.
-#' @return No return value. Files are downloaded to your local machine.
 #' @examples
-#' download_data("1Yr_msBFVwu26F4MwGBgbAu0255vb02Eq", "data1")
+#' download_data("1Yr_msBFVwu26F4MwGBgbAu0255vb02Eq")
 #' @import googledrive
-#'
-download_data <- function(folder_id, local_dir = ".") {
+
+download_data <- function(folder_id) {
   # Ensure googledrive is installed and loaded
   if (!requireNamespace("googledrive", quietly = TRUE)) {
     install.packages("googledrive")
   }
   library(googledrive)
+  
+  # Get CPGTA package directory and set download location to data1 directory
+  pkg_dir <- find.package("CPGTA")
+  local_dir <- file.path(pkg_dir)
+  
+  # Create data1 directory if it doesn't exist
+  if (!dir.exists(local_dir)) {
+    dir.create(local_dir, recursive = TRUE)
+  }
+  
+  # Inform the user where data will be downloaded
+  message("Downloading data to: ", local_dir)
 
   # Helper function: recursively download
   download_recursive <- function(current_folder_id, current_local_dir) {
@@ -35,12 +46,18 @@ download_data <- function(folder_id, local_dir = ".") {
         # It's a file, download it
         dest_path <- file.path(current_local_dir, item_name)
         drive_download(as_id(item_id), path = dest_path, overwrite = TRUE)
+        message("Downloaded: ", item_name)
       }
     }
   }
 
   # Start recursive download from the root folder
-  if (!dir.exists(local_dir)) dir.create(local_dir, recursive = TRUE)
-  download_recursive(folder_id, local_dir)
+  tryCatch({
+    download_recursive(folder_id, local_dir)
+    message("Download completed successfully!")
+    return(local_dir) # Return the path where data was downloaded
+  }, error = function(e) {
+    message("Error during download: ", e$message)
+    return(NULL)
+  })
 }
-
