@@ -3,7 +3,7 @@ Type: Package
 Title: Cancer-related Omics Data Processing and Analysis
 Version: 0.1.0
 Author: LIYING
-Maintainer: LIYING
+Maintainer: LIYING <LYING7797@outlook.com>
 Description: A package for processing and analyzing cancer-related omics data, including multi-omics data download, correlation analysis, differential analysis, immunosubtype classification, and survival analysis
 License: MIT + file LICENSE
 Encoding: UTF-8
