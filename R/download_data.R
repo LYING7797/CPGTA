@@ -5,6 +5,8 @@
 #' @examples
 #' download_data("1Yr_msBFVwu26F4MwGBgbAu0255vb02Eq")
 #' @import googledrive
+#' @export
+
 
 download_data <- function(folder_id) {
   # Ensure googledrive is installed and loaded
