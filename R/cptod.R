@@ -24,6 +24,10 @@
 #' # Download biospecimen data for a specific PDC study
 #' result <- cptod(PDC.study.identifier = "PDC000125", data.category = "Biospecimen")
 
+#' @import googledrive
+#' @importFrom utils download.file unzip read.csv
+#' @export
+
 cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
                   sample.type = NULL, PDC.study.identifier = NULL) {
   # Base directory path
