@@ -4,7 +4,7 @@
 #' @param local_dir Local directory to save the files. Default is current working directory.
 #' @return No return value. Files are downloaded to your local machine.
 #' @examples
-#' download_drive_folder("1Yr_msBFVwu26F4MwGBgbAu0255vb02Eq", "data1")
+#' download_data("1Yr_msBFVwu26F4MwGBgbAu0255vb02Eq", "data1")
 #' @import googledrive
 #'
 download_data <- function(folder_id, local_dir = ".") {
