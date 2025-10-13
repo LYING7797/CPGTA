@@ -21,6 +21,8 @@
 #' # Highlight a specific gene of interest
 #' result <- cptda(cancer.type = "LUAD", log2FC = 1.0, top.gene = 10, gene.name = c("KRT5", "KRT14"))
 
+#' @importFrom stats t.test wilcox.test p.adjust
+#' @export
 
 cptda <- function(cancer.type,
                   log2FC,     # numeric, up to 1 decimal
