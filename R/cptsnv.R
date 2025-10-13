@@ -1,19 +1,43 @@
+#' @title
+#' Clinical Proteogenomic Tumor SNV Analysis (cptsnv)
+#'
+#' @description
+#' This function enables the analysis of somatic single-nucleotide variations (SNVs) in cancer.
+#' It supports the identification of key mutations by integrating data from multiple PDC identifiers or cancer types.
+#' The function generates comprehensive visualizations, such as mutation frequency plots, oncoplots, and heatmaps,
+#' to help uncover potential mutation-based biomarkers for patient stratification and therapeutic insights.
+#'
+#' @param cancer.type String (optional). The full name or abbreviation of the cancer type (e.g., "BRCA" or "Breast Cancer").
+#' @param PDC.study.identifier String or vector (optional). The PDC study identifier(s) to be analyzed.
+#' @param top_n_genes Integer. Number of top mutated genes to display in summary plots and co-occurrence analysis. Default is 20.
+#' @param min_mut_freq Numeric. Minimum mutation frequency threshold for gene selection. Default is 0.05.
+#'
+#' @return A list containing analysis results, summary statistics, and generated visualization objects.
+#'
+#' @examples
+#' # SNV analysis for BRCA cancer type
+#' result <- cptsnv(cancer.type = "BRCA")
+#'
+#' # SNV analysis for specific PDC identifiers
+#' result <- cptsnv(PDC.study.identifier = c("PDC001", "PDC002"))
+
+
 cptsnv <- function(cancer.type = NULL,
                         PDC.study.identifier = NULL,
                         top_n_genes = 20,
                         min_mut_freq = 0.05) {
   cancer_pdc_info_path = "./data1/cancer_PDC_info.csv"
-  # 创建输出目录
+  # Create output directories
   output_dir <- file.path(getwd(), "snv_analysis_results")
   plots_dir <- file.path(output_dir, "plots")
   dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
   dir.create(plots_dir, showWarnings = FALSE, recursive = TRUE)
-  # 参数验证
+  # Parameter validation
   if (is.null(cancer.type) && is.null(PDC.study.identifier)) {
     stop("At least one of the parameters, cancer.type or PDC.study.identifier, must be provided.")
   }
 
-  # 加载必要的包
+  # Load required packages
   required_packages <- c("dplyr", "ggplot2", "maftools", "ComplexHeatmap",
                          "BSgenome.Hsapiens.UCSC.hg19", "RColorBrewer",
                          "tibble", "tidyr")
@@ -26,12 +50,11 @@ cptsnv <- function(cancer.type = NULL,
     library(pkg, character.only = TRUE)
   }
 
-  # 读取cancer_PDC_info.csv文件
   cancer_pdc_info <- read.csv(cancer_pdc_info_path, check.names = FALSE)
 
-  # 确定需要分析的PDC标识符
+  # Determine PDC identifiers for analysis
   if (!is.null(cancer.type)) {
-    # 根据cancer.type找到对应的PDC标识符
+    # Find corresponding PDC identifiers by cancer.type
     matched_pdcs <- cancer_pdc_info %>%
       filter(cancer_type == cancer.type | abbreviation == cancer.type) %>%
       pull(`Simple Nucleotide Variation`) %>%
@@ -42,7 +65,7 @@ cptsnv <- function(cancer.type = NULL,
       stop(paste("No matching PDC identifiers found for cancer type:", cancer.type))
     }
 
-    # 获取癌症类型的完整名称和缩写
+    # Get full name and abbreviation of cancer type
     cancer_info <- cancer_pdc_info %>%
       filter(cancer_type == cancer.type | abbreviation == cancer.type)
     cancer_full_name <- cancer_info$cancer_type[1]
@@ -50,17 +73,17 @@ cptsnv <- function(cancer.type = NULL,
 
     analysis_title <- paste0(cancer_full_name, " (", cancer_abbr, ")")
   } else {
-    # 直接使用提供的PDC标识符
+    # Use provided PDC study identifier directly
     matched_pdcs <- PDC.study.identifier
     analysis_title <- paste0("PDC分析: ", paste(matched_pdcs, collapse=", "))
   }
 
-  # 如果提供了多个PDC，将属于同一癌种的标识符数据合并
+  # If multiple PDCs are provided, merge data for the same cancer type
   if (length(matched_pdcs) > 1) {
     message(paste("Provided", length(matched_pdcs), "PDC identifiers, merging for analysis:",
                   paste(matched_pdcs, collapse=", ")))
 
-    # 合并多个MAF文件
+    # Merge multiple MAF files
     combined_maf <- NULL
     successful_pdcs <- c()
 
@@ -70,7 +93,7 @@ cptsnv <- function(cancer.type = NULL,
         message(paste("Loading MAF data:", maf_file))
         current_maf <- readRDS(maf_file)
 
-        # 如果数据不是MAF对象，转换为MAF对象
+        # Convert to MAF object if not already
         if (!inherits(current_maf, "MAF")) {
           current_maf <- read.maf(maf = current_maf)
         }
@@ -78,7 +101,6 @@ cptsnv <- function(cancer.type = NULL,
         if (is.null(combined_maf)) {
           combined_maf <- current_maf
         } else {
-          # 使用maftools的merge_mafs函数合并MAF对象
           combined_maf <- maftools::merge_mafs(mafs = list(combined_maf, current_maf))
         }
 
@@ -88,10 +110,10 @@ cptsnv <- function(cancer.type = NULL,
       }
     }
 
-    # 使用合并后的MAF对象
+    # Convert to MAF object if not already
     if (!is.null(combined_maf)) {
       maf_data <- combined_maf
-      pdc_id <- paste(successful_pdcs, collapse="_")  # 创建组合ID
+      pdc_id <- paste(successful_pdcs, collapse="_")
       message(paste("Successfully merged", length(successful_pdcs), "PDC identifiers' data:",
                     paste(successful_pdcs, collapse=", ")))
     } else {
@@ -100,7 +122,7 @@ cptsnv <- function(cancer.type = NULL,
 
   } else {
     pdc_id <- matched_pdcs
-    # 加载单个MAF文件
+    # Load single MAF file
     maf_file <- file.path("./data1/Simple Nucleotide Variation", paste0(pdc_id, ".rds"))
     message(paste("Loading MAF data:", maf_file))
 
@@ -110,16 +132,15 @@ cptsnv <- function(cancer.type = NULL,
 
     maf_data <- readRDS(maf_file)
 
-    # 如果数据不是MAF对象，转换为MAF对象
     if (!inherits(maf_data, "MAF")) {
       maf_data <- read.maf(maf = maf_data)
     }
   }
 
-  # 初始化结果列表
+  # Initialize result list
   results <- list()
 
-  # 保存MAF对象和分析元数据
+  # Save MAF object and analysis metadata
   results$maf_data <- maf_data
   results$analysis_info <- list(
     pdc_id = pdc_id,
@@ -129,23 +150,23 @@ cptsnv <- function(cancer.type = NULL,
     is_merged = length(matched_pdcs) > 1
   )
 
-  # 1. 基本突变统计 - 汇总分析
+  # 1. Basic mutation statistics - summary analysis
   message("Performing basic mutation statistics (summary analysis)...")
   results$summary <- getSampleSummary(maf_data)
   results$gene_summary <- getGeneSummary(maf_data)
 
-  # 计算总体统计信息
+  # Calculate overall statistics
   total_samples <- length(unique(results$summary$Tumor_Sample_Barcode))
   total_mutations <- sum(results$summary$total)
   total_genes <- length(unique(results$gene_summary$Hugo_Symbol))
 
-  # 计算基因突变频率
+  # Calculate gene mutation frequency
   message("Calculating mutation frequency for genes...")
   mut_freq <- results$gene_summary %>%
     mutate(mut_freq = AlteredSamples / total_samples) %>%
     arrange(desc(mut_freq))
 
-  # 如果没有基因突变数据，创建一个空的数据框
+  # Create an empty data frame if no mutation data
   if (nrow(mut_freq) == 0) {
     mut_freq <- data.frame(Hugo_Symbol = character(0), mut_freq = numeric(0))
   }
@@ -162,14 +183,14 @@ cptsnv <- function(cancer.type = NULL,
   message(paste("Total number of mutations:", total_mutations))
   message(paste("Average mutations per sample:", round(total_mutations / total_samples, 2)))
 
-  # 2. 突变负荷分析 (TMB) - 汇总视图
+  # 2. Tumor mutation burden (TMB) analysis - summary view
   message("Analyzing tumor mutation burden (summary analysis)...")
   tmb <- tibble(
     Tumor_Sample_Barcode = results$summary$Tumor_Sample_Barcode,
-    TMB = results$summary$total / 38  # 假设使用38MB作为人类外显子组大小
+    TMB = results$summary$total / 38
   )
 
-  # 添加TMB汇总统计
+  # Add TMB summary statistics
   tmb_stats <- list(
     median_tmb = median(tmb$TMB),
     mean_tmb = mean(tmb$TMB),
@@ -179,7 +200,7 @@ cptsnv <- function(cancer.type = NULL,
     q3_tmb = quantile(tmb$TMB, 0.75)
   )
 
-  # 绘制TMB分布图 - 汇总视图，添加中位数线
+  # Plot TMB distribution - summary view with median line
   tmb_plot <- ggplot(tmb, aes(x = reorder(Tumor_Sample_Barcode, -TMB), y = TMB)) +
     geom_bar(stat = "identity", fill = "lightblue") +
     geom_hline(yintercept = tmb_stats$median_tmb, linetype = "dashed", color = "red") +
@@ -192,7 +213,7 @@ cptsnv <- function(cancer.type = NULL,
          x = "sample", y = "Mutations per megabase (TMB)")
 
 
-  # 创建TMB密度分布图
+  # Create TMB density distribution plot
   tmb_density_plot <- ggplot(tmb, aes(x = TMB)) +
     geom_histogram(aes(y = ..density..),
                    bins = 30,
@@ -217,12 +238,10 @@ cptsnv <- function(cancer.type = NULL,
   results$tmb_data <- tmb
   results$tmb_stats <- tmb_stats
 
-  # 保存TMB柱状图
   ggsave(file.path(plots_dir, "tmb_distribution.pdf"), tmb_plot, width = 12, height = 6)
-  # 保存TMB密度图
   ggsave(file.path(plots_dir, "tmb_density.pdf"), tmb_density_plot, width = 10, height = 6)
 
-  # 3 添加突变类型的数据汇总----
+  # 3. Add mutation type data summary ----
   if (!is.null(maf_data@data)) {
     var_type_summary <- as.data.frame(table(maf_data@data$Variant_Type))
     colnames(var_type_summary) <- c("Variant_Type", "Count")
@@ -235,7 +254,7 @@ cptsnv <- function(cancer.type = NULL,
     results$variant_type_summary <- var_type_summary
     results$variant_classification_summary <- var_class_summary
 
-    # 创建突变类型饼图
+    # Create mutation type pie chart
     vt_pie <- ggplot(var_type_summary, aes(x = "", y = Count, fill = Variant_Type)) +
       geom_bar(stat = "identity", width = 1) +
       coord_polar("y", start = 0) +
@@ -247,29 +266,26 @@ cptsnv <- function(cancer.type = NULL,
       geom_text(aes(label = paste0(round(Percentage, 1), "%")),
                 position = position_stack(vjust = 0.5))
 
-    # 保存突变类型饼图
     ggsave(file.path(plots_dir, "variant_type_pie.pdf"), vt_pie, width = 8, height = 6)
     results$variant_type_pie <- vt_pie
 
-    # 创建突变分类柱状图
+    # Create mutation classification bar chart
     vc_bar <- ggplot(var_class_summary, aes(x = reorder(Variant_Classification, -Count), y = Count)) +
       geom_bar(stat = "identity", fill = "steelblue") +
       theme_minimal() +
       theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
       labs(title = paste0("Mutation Classification Distribution - ", analysis_title),
            x = "Mutation Classification",
-           y = "数量")
+           y = "Number")
 
-    # 保存突变分类柱状图
     ggsave(file.path(plots_dir, "variant_classification_bar.pdf"), vc_bar, width = 10, height = 6)
 
     results$variant_classification_bar <- vc_bar
   }
 
-  # 4. 突变瀑布图(Oncoplot) - 汇总分析----
+  # 4. Oncoplot for high-frequency mutated genes - summary analysis ----
   message("Generating oncoplot for high-frequency mutated genes (summary analysis)...")
   tryCatch({
-    # 保存为PDF
     pdf(file.path(plots_dir, "oncoplot.pdf"), width = 12, height = 8)
     oncoplot(
       maf = maf_data,
@@ -306,11 +322,9 @@ cptsnv <- function(cancer.type = NULL,
     results$oncoplot_error <- e$message
   })
 
-  # 5. 互斥性和共现性分析 - 汇总分析----
-  # 正确的方法 - 直接在PDF设备中绘图
+  # 5. Exclusivity and co-occurrence analysis - summary analysis ----
   message("Analyzing mutation exclusivity and co-occurrence (summary analysis)...")
   tryCatch({
-    # 直接在PDF设备中绘制
     pdf(file.path(plots_dir, "somatic_interactions.pdf"), width = 12, height = 12)
 
     # 使用参数调整
@@ -318,20 +332,18 @@ cptsnv <- function(cancer.type = NULL,
       maf_data,
       top = top_n_genes,
       pvalue = 0.05,
-      leftMar = 6,       # 增加左边距，为左侧的基因名留出更多空间（原默认值为4）
-      topMar = 6,        # 增加顶部边距，为顶部的基因名留出更多空间（原默认值为4）
-      fontSize = 0.8,     # 略微减小字体大小（原默认值为0.8）
+      leftMar = 6,
+      topMar = 6,
+      fontSize = 0.8,
       showSigSymbols = TRUE,
-      sigSymbolsSize = 1.5  # 调整显著性符号大小以适应更紧凑的排布
+      sigSymbolsSize = 1.5
     )
 
     dev.off()
 
-    # 分别保存结果对象（不绘图）
     si_result <- somaticInteractions(maf_data, top = top_n_genes, pvalue = 0.05, returnAll = TRUE)
     results$somatic_interactions <- si_result
 
-    # 检查结果
     if (!is.null(si_result)) {
       results$somatic_interactions_generated <- TRUE
       message("Successfully generated exclusivity/co-occurrence plot.")
@@ -347,19 +359,17 @@ cptsnv <- function(cancer.type = NULL,
 
 
 
-  # 8. 染色体突变分布（汇总分析）----
+  # 8. Chromosome mutation distribution (summary analysis) ----
   message("Generating chromosome mutation distribution data (summary analysis)...")
   chrom_data <- tryCatch({
-    # 提取染色体位置信息
     chromosome_data <- maf_data@data %>%
       mutate(
-        # 移除"chr"前缀
         Chromosome = gsub("chr", "", Chromosome)
       ) %>%
       select(Chromosome, Start_Position, End_Position, Variant_Type) %>%
       as.data.frame()
 
-    # 汇总每条染色体上的突变数量
+    # Summarize mutation counts for each chromosome
     chrom_summary <- chromosome_data %>%
       group_by(Chromosome) %>%
       summarize(
@@ -371,7 +381,7 @@ cptsnv <- function(cancer.type = NULL,
       ) %>%
       mutate(Proportion = Mutations / sum(Mutations) * 100)
 
-    # 设置染色体顺序
+    # Set chromosome order
     chrom_summary$Chromosome <- factor(chrom_summary$Chromosome,
                                        levels = c(1:22, "X", "Y") %>% as.character())
 
@@ -382,13 +392,13 @@ cptsnv <- function(cancer.type = NULL,
   })
   results$chromosome_data <- chrom_data
 
-  # 生成染色体突变分布图
+  # Generate chromosome mutation distribution plot
   if(!is.null(chrom_data)) {
-    # 按染色体编号排序（处理染色体X、Y）
+    # Sort by chromosome number (handle chromosomes X, Y)
     chrom_data$Chromosome <- factor(chrom_data$Chromosome,
                                     levels = c(1:22, "X", "Y", "MT") %>% as.character())
 
-    # 染色体突变总量图
+    # Chromosome mutation total plot
     chrom_plot <- ggplot(chrom_data, aes(x = Chromosome, y = Mutations)) +
       geom_bar(stat = "identity", fill = "steelblue") +
       theme_minimal() +
@@ -397,12 +407,11 @@ cptsnv <- function(cancer.type = NULL,
            x = "Chromosome", y = "Number of mutations") +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-    # 保存染色体突变分布图
     ggsave(file.path(plots_dir, "chromosome_mutations.pdf"), chrom_plot, width = 10, height = 6)
 
     results$chromosome_plot <- chrom_plot
 
-    # 添加按突变类型堆叠的柱状图
+    # Save chromosome mutation distribution plot
     chrom_type_plot <- ggplot(chrom_data %>%
                                 select(Chromosome, SNP, DEL, INS) %>%
                                 tidyr::pivot_longer(cols = c(SNP, DEL, INS),
@@ -415,25 +424,24 @@ cptsnv <- function(cancer.type = NULL,
            x = "Chromosome", y = "Number of mutations") +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-    # 保存染色体突变类型分布图
     ggsave(file.path(plots_dir, "chromosome_mutation_types.pdf"), chrom_type_plot, width = 10, height = 6)
 
     results$chromosome_type_plot <- chrom_type_plot
   }
 
-  # 生成汇总图并保存为PDF
+  # Generate summary plot and save as PDF
   pdf(file.path(plots_dir, "maf_summary.pdf"), width = 12, height = 12)
   plotmafSummary(maf_data,
-                 rmOutlier = TRUE,  # 移除异常值
-                 addStat = 'median', # 添加中位数统计
-                 dashboard = TRUE,   # 使用仪表盘式布局
-                 titvRaw = TRUE,     # 显示原始Ti/Tv数据
-                 top = 20,           # 显示top 20突变基因
-                 textSize = 0.8)     # 文本大小
+                 rmOutlier = TRUE,
+                 addStat = 'median',
+                 dashboard = TRUE,
+                 titvRaw = TRUE,
+                 top = 20,
+                 textSize = 0.8)
   dev.off()
 
 
-  # 创建结果的摘要表格
+  # Create summary table for results
   summary_df <- data.frame(
     "Analysis Title" = analysis_title,
     "PDC Identifier" = pdc_id,
@@ -447,7 +455,7 @@ cptsnv <- function(cancer.type = NULL,
     "Analysis Date" = as.character(Sys.Date())
   )
 
-  # 如果存在突变类型数据，添加到摘要表
+  # Add mutation type data to summary table if available
   if (exists("var_type_summary") && !is.null(var_type_summary)) {
     snp_row <- which(var_type_summary$Variant_Type == "SNP")
     if (length(snp_row) > 0) {
@@ -461,15 +469,12 @@ cptsnv <- function(cancer.type = NULL,
 
   results$summary_table <- summary_df
 
-  # 保存分析结果为RDS文件
   saveRDS(results, file = file.path(output_dir, "analysis_results.rds"))
-
-  # 将summary_df保存为CSV文件
   write.csv(summary_df,
             file = file.path(output_dir, "analysis_summary.csv"),
             row.names = FALSE)
 
-  # 创建分析报告文本文件
+  # Create analysis report text file
   report_text <- paste0(
     "SNV Analysis Report\n",
     "Analysis Time: ", Sys.time(), "\n\n",
@@ -487,7 +492,7 @@ cptsnv <- function(cancer.type = NULL,
     "Generated Plot Files:\n"
   )
 
-  # 列出所有生成的图形文件
+  # List all generated plot files
   plot_files <- list.files(plots_dir, pattern = "\\.pdf$")
   for (file in plot_files) {
     report_text <- paste0(report_text, "- ", file, "\n")
@@ -497,19 +502,14 @@ cptsnv <- function(cancer.type = NULL,
 
   message(paste0("Analysis completed! Results have been saved to: ", output_dir))
 
-  # 返回结果列表
+  # Return results list
   return(results)
 }
 
 
 
 
-res <- cptsnv(
-  cancer.type = "LUSC",
-  PDC.study.identifier = NULL,
-  top_n_genes = 20,
-  min_mut_freq = 0.05
-)
+
 
 
 

@@ -1,3 +1,26 @@
+#' @title
+#' Clinical Proteogenomic Tumor Immunosubtype Classification (cptic)
+#'
+#' @description
+#' This function classifies tumor samples based on their immunological profiles,
+#' facilitating the study and understanding of the tumor microenvironment.
+#' It integrates clinical and proteogenomic data to assign immunosubtypes to tumor samples
+#' for a specified cancer type and omics data category.
+#'
+#' @param cancer.type String. The full name or abbreviation of the cancer type (e.g., "BRCA" or "Breast Cancer").
+#' @param data.category String. Omics data category; must be either "Transcriptome" or "Proteome".
+#'
+#' @return A data frame containing classified tumor samples and their immunological subtypes
+#'         for the specified cancer type and omics category.
+#'
+#' @examples
+#' # Classify transcriptome samples for LUSC
+#' result <- cptic(cancer.type = "LUSC", data.category = "Transcriptome")
+#'
+#' # Classify proteome samples for BRCA
+#' result <- cptic(cancer.type = "BRCA", data.category = "Proteome")
+
+
 cptic <- function(cancer.type, data.category) {
   # Check if all necessary parameters are provided
   if (missing(cancer.type) || missing(data.category)) {
@@ -58,6 +81,13 @@ cptic <- function(cancer.type, data.category) {
     stop(paste("Error: Unable to read file:", classified_file))
   })
 
+  # Read alltumor.csv
+  alltumor <- tryCatch({
+    read.csv(alltumor_file, row.names = 1, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    stop("Error: Unable to read 'alltumor.csv' file.")
+  })
+
   # Get the PDC value corresponding to the column name (based on cancer.type)
   # First, find the relevant row for cancer.type in 'cancer_PDC_info.csv'
   cancer_info_row <- cancer_pdc_info[
@@ -66,22 +96,17 @@ cptic <- function(cancer.type, data.category) {
   # Get the corresponding PDC column name and provide specific error information based on data.category
   if (data.category == "Transcriptome") {
     pdc_column_name <- cancer_info_row$Transcriptome
-    if (all(!(pdc_column_name %in% alltumor_data$PDC_RNA))) {
+    if (all(!(pdc_column_name %in% alltumor$Transcriptome))) {
       stop(paste("Error: The cancer type", cancer.type, "does not have available transcriptomic immune subtype data."))
     }
   } else { # Proteome
     pdc_column_name <- cancer_info_row$Proteome
-    if (all(!(pdc_column_name %in% alltumor_data$PDC_Pro))) {
+    if (all(!(pdc_column_name %in% alltumor$Proteome))) {
       stop(paste("Error: The cancer type", cancer.type, "does not have available proteomic immune subtype data."))
     }
   }
 
-  # Read alltumor.csv
-  alltumor <- tryCatch({
-    read.csv(alltumor_file, row.names = 1, stringsAsFactors = FALSE)
-  }, error = function(e) {
-    stop("Error: Unable to read 'alltumor.csv' file.")
-  })
+
 
   # Get corresponding PDC values
   pdc_values <- alltumor[[pdc_column]]
@@ -100,7 +125,6 @@ cptic <- function(cancer.type, data.category) {
   # Return the result matrix
   return(result_matrix)
 }
-
 
 
 

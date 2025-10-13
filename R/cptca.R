@@ -1,14 +1,30 @@
+#' @title
+#' Clinical Proteogenomic Tumor Correlation Analysis(cptca)
+#'
+#' @description
+#' This function calculates the gene-wise correlation between two omics datasets (e.g., Transcriptome and Proteome)
+#' for a specified cancer type and gene. It reads, merges, and aligns data from multiple PDC studies if necessary,
+#' and visualizes the correlation distribution between tumor and normal samples, highlighting the specified gene.
+#'
+#' @param gene.name String. The gene name of interest for correlation analysis.
+#' @param cancer.type String. Cancer type name or abbreviation.
+#' @param data.category Character vector of length 2. Specifies the two omics to compare, e.g., c("Transcriptome", "Proteome").
+#'
+#' @return Returns a list containing:
+#'   \item{correlation_data}{A data frame of correlation values for all genes in tumor and normal samples.}
+#'   \item{plot}{A ggplot object visualizing the correlation distributions and highlighting the specified gene.}
+#'
+#' @examples
+#'   result <- cptca(gene.name = "TP53", cancer.type = "BRCA", data.category = c("Transcriptome", "Proteome"))
+
+
+
 cptca <- function(gene.name,
                   cancer.type,
                   data.category) {
-  # -----------------------
-  # 0. 设置基础路径
-  # -----------------------
-  base_path <- "./data1"  # 假设所有数据都在 ./data1 目录下
+  base_path <- "./data1"
 
-  # -----------------------
-  # 1. 参数检查
-  # -----------------------
+  # 1. Parameter checking
   if (missing(gene.name) | missing(cancer.type) | missing(data.category)) {
     stop("Error: Missing required parameters. Please ensure 'gene.name', 'cancer.type', and 'data.category' are provided.")
   }
@@ -21,9 +37,7 @@ cptca <- function(gene.name,
     stop("Error: 'data.category' contains invalid types. Valid options: Transcriptome, Proteome, Phosphoproteome.")
   }
 
-  # -----------------------
-  # 2. 读取 cancer_PDC_info.csv 并获取 PDC 编码
-  # -----------------------
+  # 2. Read cancer_PDC_info.csv and get PDC codes
   pdc_info_file <- file.path(base_path, "cancer_PDC_info.csv")
   if (!file.exists(pdc_info_file)) {
     stop("Error: 'cancer_PDC_info.csv' file not found. Please check the path or filename.")
@@ -31,16 +45,16 @@ cptca <- function(gene.name,
 
   cancer_info <- read.csv(pdc_info_file, stringsAsFactors = FALSE)
 
-  # 检查 cancer.type 是否存在
+  # Check if cancer.type exists
   matched_rows <- which(cancer_info$cancer_type == cancer.type |
                           cancer_info$abbreviation == cancer.type)
   if (length(matched_rows) == 0) {
     stop("Error: The input 'cancer.type' was not found in 'cancer_PDC_info.csv'.")
   }
 
-  # 函数：根据组学类型返回对应的 PDC 列名 - 修改后的函数
+  # Return corresponding PDC column name based on omics type
   get_pdc_col_name <- function(omics) {
-    # 现在列名与组学类型相同
+    # Now column name is the same as omics type
     if (omics %in% colnames(cancer_info)) {
       return(omics)
     } else {
@@ -48,12 +62,12 @@ cptca <- function(gene.name,
     }
   }
 
-  # 函数：根据 omics 在 matched_rows 中获取所有 PDC code（可能有多个）
+  # Get all PDC codes for the omics type in matched_rows (may be multiple)
   get_pdc_codes <- function(omics) {
     pdc_col <- get_pdc_col_name(omics)
     codes <- cancer_info[[pdc_col]][matched_rows]
     codes <- unique(codes)  # 去重
-    codes <- codes[!is.na(codes) & codes != ""]  # 去掉 NA 或空字符串
+    codes <- codes[!is.na(codes) & codes != ""]
     if (length(codes) == 0) {
       warning(paste("Warning: No corresponding PDC code found for", omics, "in the matched rows."))
       return(character(0))
@@ -61,7 +75,7 @@ cptca <- function(gene.name,
     return(codes)
   }
 
-  # 分别取出 data.category[1], data.category[2] 的 PDC codes
+  # Get PDC codes for data.category[1] and data.category[2]
   pdc_codes_1 <- get_pdc_codes(data.category[1])
   pdc_codes_2 <- get_pdc_codes(data.category[2])
 
@@ -69,9 +83,7 @@ cptca <- function(gene.name,
     stop("Error: No PDC codes found for either omics type, cannot proceed.")
   }
 
-  # -----------------------
-  # 3. 数据读取：可能需要合并多个 PDC code 的文件
-  # -----------------------
+  # 3. Data reading: merge files from multiple PDC codes if needed
   get_omics_file_name <- function(omics, pdc_code, tissue_type = c("tumor","normal")) {
     tissue_type <- match.arg(tissue_type)
     prefix <- switch(omics,
@@ -87,7 +99,6 @@ cptca <- function(gene.name,
     return(file_name)
   }
 
-  # 安全读取
   safe_read <- function(fp) {
     if (!file.exists(fp)) {
       warning("Warning: File does not exist => ", fp)
@@ -97,7 +108,7 @@ cptca <- function(gene.name,
     return(df)
   }
 
-  # 同一 Omics + Tissue 类型下，可能有多个 PDC code，需要合并（按行名对齐，列合并）
+  # For the same Omics + Tissue type, there may be multiple PDC codes, need to merge (align by row names, merge columns)
   read_and_merge_files <- function(omics, tissue_type, pdc_codes) {
     if (length(pdc_codes) == 0) {
       return(NULL)
@@ -117,32 +128,30 @@ cptca <- function(gene.name,
       return(NULL)
     }
 
-    # 找共同基因
+    # Find common genes
     common_genes <- Reduce(intersect, lapply(dfs, rownames))
     if (length(common_genes) == 0) {
       warning("Warning: No common genes found among multiple PDC code data. Returning NULL.")
       return(NULL)
     }
-    # 截取共同基因
+    # Subset common genes
     for (i in seq_along(dfs)) {
       dfs[[i]] <- dfs[[i]][common_genes, , drop = FALSE]
     }
-    # 合并列
+    # Merge columns
     merged_df <- do.call(cbind, dfs)
     return(merged_df)
   }
 
-  # 读取 omics1
+  # Read omics1
   omics1_tumor   <- read_and_merge_files(data.category[1], "tumor",   pdc_codes_1)
   omics1_normal  <- read_and_merge_files(data.category[1], "normal", pdc_codes_1)
 
-  # 读取 omics2
+  # Read omics2
   omics2_tumor   <- read_and_merge_files(data.category[2], "tumor",   pdc_codes_2)
   omics2_normal  <- read_and_merge_files(data.category[2], "normal", pdc_codes_2)
 
-  # -----------------------
-  # 4. 相关性计算函数
-  # -----------------------
+  # 4. Correlation calculation function
   calc_correlation_by_gene <- function(df1, df2) {
     if (is.null(df1) || is.null(df2)) {
       return(NULL)
@@ -177,13 +186,11 @@ cptca <- function(gene.name,
     return(res)
   }
 
-  # 分别计算肿瘤和正常的基因相关性
+  # Calculate gene-wise correlation for tumor and normal samples
   corr_tumor  <- calc_correlation_by_gene(omics1_tumor, omics2_tumor)
   corr_normal <- calc_correlation_by_gene(omics1_normal, omics2_normal)
 
-  # -----------------------
-  # 5. 整理结果并可视化
-  # -----------------------
+  # 5. Organize results and visualization
   if (is.null(corr_tumor)) {
     corr_tumor <- data.frame(gene = character(0), correlation = numeric(0), Tissue = character(0))
   } else {
@@ -202,22 +209,21 @@ cptca <- function(gene.name,
     stop("No available correlation results (files may be missing or no common genes/samples).")
   }
 
-  # 提取用户关注的基因
+  # Extract the gene of interest
   gene_of_interest <- corr_all[corr_all$gene == gene.name, ]
   if (nrow(gene_of_interest) == 0) {
     warning("Warning: The specified gene was not found in the correlation results: ", gene.name)
   }
 
-  # 简单可视化
   library(ggplot2)
 
-  # 指定颜色：Tumor=粉色，Normal=浅蓝
+  # Specify colors: Tumor=pink, Normal=light blue
   tissue_colors <- c("Tumor" = "pink", "Normal" = "lightblue")
 
   p <- ggplot(corr_all, aes(x = Tissue, y = correlation, fill = Tissue)) +
     geom_boxplot(outlier.alpha = 0.3) +
     scale_fill_manual(values = tissue_colors) +
-    theme_bw(base_size = 14) +
+    theme_bw(base_size = 6) +
     labs(
       title = paste0("Correlation between ",
                      paste(data.category, collapse = " & "),
@@ -227,7 +233,7 @@ cptca <- function(gene.name,
     ) +
     theme(legend.position = "none")
 
-  # 对指定基因在箱线图上加点及数值标注
+  #   # Add points and value labels for the specified gene on the boxplot
   if (nrow(gene_of_interest) > 0) {
     p <- p +
       geom_point(
@@ -249,7 +255,7 @@ cptca <- function(gene.name,
       )
   }
 
-  # 如果同时包含 Tumor & Normal 两组，则进行显著性差异检验并标注 p 值
+  # If both Tumor & Normal groups are present, perform significance test and annotate p-value
   tissue_types <- unique(corr_all$Tissue)
   if (length(tissue_types) == 2 && all(c("Tumor", "Normal") %in% tissue_types)) {
     test_res <- t.test(correlation ~ Tissue, data = corr_all)
@@ -266,7 +272,7 @@ cptca <- function(gene.name,
     p <- p +
       annotate(
         "text",
-        x = 1.5,  # 两组中间位置
+        x = 1.5,
         y = y_pos,
         label = p_text,
         size = 4,
