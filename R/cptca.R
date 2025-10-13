@@ -17,6 +17,10 @@
 #' @examples
 #'   result <- cptca(gene.name = "TP53", cancer.type = "BRCA", data.category = c("Transcriptome", "Proteome"))
 
+#' @importFrom stats cor cor.test p.adjust
+#' @importFrom ggplot2 ggplot aes geom_point theme_bw labs
+#' @export
+
 
 
 cptca <- function(gene.name,
