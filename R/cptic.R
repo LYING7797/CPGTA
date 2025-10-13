@@ -20,6 +20,8 @@
 #' # Classify proteome samples for BRCA
 #' result <- cptic(cancer.type = "BRCA", data.category = "Proteome")
 
+#' @importFrom stats hclust dist kmeans
+#' @export
 
 cptic <- function(cancer.type, data.category) {
   # Check if all necessary parameters are provided
