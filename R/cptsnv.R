@@ -20,6 +20,9 @@
 #'
 #' # SNV analysis for specific PDC identifiers
 #' result <- cptsnv(PDC.study.identifier = c("PDC001", "PDC002"))
+#' @importFrom maftools read.maf oncoplot lollipopPlot
+#' @importFrom ggplot2 ggplot aes geom_bar theme_bw labs
+#' @export
 
 
 cptsnv <- function(cancer.type = NULL,
