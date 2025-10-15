@@ -8,7 +8,7 @@
 #'
 #' @param cancer.type String. The name or abbreviation of the cancer type.
 #' @param log2FC Numeric. Threshold for log2 fold change, up to one decimal place.
-#' @param top.gene Integer. Number of top differentially expressed genes to label in the volcano plot (maximum 20).
+#' @param top.gene Integer. Number of top differentially expressed genes to label in the volcano plot .
 #' @param gene.name Character vector or NULL. Optional. Names of specific genes to highlight in the volcano plot. If provided and the genes exist in the dataset, they will be highlighted with a different color and size regardless of whether they're in the top genes.
 #' @return A list of lists, with each sublist containing:
 #'   \item{diff_table}{A data frame of differential analysis results, including gene names, log2FC, p-values, adjusted p-values, and group assignment.}
@@ -20,8 +20,11 @@
 #'
 #' # Highlight a specific gene of interest
 #' result <- cptda(cancer.type = "LUAD", log2FC = 1.0, top.gene = 10, gene.name = c("KRT5", "KRT14"))
-
-#' @importFrom stats t.test wilcox.test p.adjust
+#'
+#' @importFrom utils read.csv unzip
+#' @importFrom DESeq2 DESeqDataSetFromMatrix DESeq results counts
+#' @importFrom ggplot2 ggplot aes geom_point scale_color_identity scale_size_manual theme_bw labs theme geom_vline geom_hline geom_text
+#'
 #' @export
 
 cptda <- function(cancer.type,
@@ -34,10 +37,7 @@ cptda <- function(cancer.type,
     stop("Error: Missing required parameters. Please provide 'cancer.type', 'log2FC', and 'top.gene'.")
   }
 
-  base_path <- "./data1"
-  data.category <- "Transcriptome"  # Default parameter is Transcriptome
-
-  info_file <- file.path(base_path, "cancer_PDC_info.csv")
+  info_file <- file.path("cancer_PDC_info.csv")
   if (!file.exists(info_file)) {
     stop("Error: 'cancer_PDC_info.csv' does not exist in the specified path.")
   }
@@ -72,7 +72,7 @@ cptda <- function(cancer.type,
     }
   }
 
-  pdc_col <- get_pdc_col_name(data.category)
+  pdc_col <- get_pdc_col_name("Transcriptome")
 
   pdc_codes <- unique(cancer_info[[pdc_col]][matched_rows])
   pdc_codes <- pdc_codes[!is.na(pdc_codes) & pdc_codes != ""]
@@ -86,34 +86,43 @@ cptda <- function(cancer.type,
   plots_list <- list()
 
   for (pdc_code in pdc_codes) {
-    # Read count data
-    counts_folder <- file.path(base_path, data.category, "Counts_data")
+    zip_file <- "Counts.zip"
+    # Create temporary directory to extract files
+    temp_dir <- tempdir()
+    # Define file paths within zip
+    tumor_counts_path <- file.path(paste0(pdc_code, "_rna_tumor_counts.csv"))
+    normal_counts_path <- file.path(paste0(pdc_code, "_rna_normal_counts.csv"))
 
-    # Read tumor sample count data
-    tumor_counts_file <- file.path(counts_folder, paste0(pdc_code, "_rna_tumor_counts.csv"))
-    if (!file.exists(tumor_counts_file)) {
+    # Extract only the needed files from zip
+    tumor_file <- unzip(zip_file, files = tumor_counts_path, exdir = temp_dir, overwrite = TRUE)
+    normal_file <- unzip(zip_file, files = normal_counts_path, exdir = temp_dir, overwrite = TRUE)
+
+    # Check if files were successfully extracted
+    if (length(tumor_file) == 0 || !file.exists(file.path(temp_dir, tumor_counts_path))) {
       warning(paste("No tumor counts file found for PDC code:", pdc_code))
       next
     }
-    tumor_counts <- read.csv(tumor_counts_file, row.names = 1)
-    colnames(tumor_counts) <- paste0("T_",colnames(tumor_counts))
 
-    # Read normal sample count data
-    normal_counts_file <- file.path(counts_folder, paste0(pdc_code, "_rna_normal_counts.csv"))
-    if (!file.exists(normal_counts_file)) {
+    if (length(normal_file) == 0 || !file.exists(file.path(temp_dir, normal_counts_path))) {
       warning(paste("No normal counts file found for PDC code:", pdc_code))
       next
     }
-    normal_counts <- read.csv(normal_counts_file, row.names = 1)
-    colnames(normal_counts) <- paste0("N_",colnames(normal_counts))
 
+    # Read the extracted files
+    tumor_counts <- read.csv(file.path(temp_dir, tumor_counts_path), row.names = 1)
+    colnames(tumor_counts) <- paste0("T_", colnames(tumor_counts))
 
+    normal_counts <- read.csv(file.path(temp_dir, normal_counts_path), row.names = 1)
+    colnames(normal_counts) <- paste0("N_", colnames(normal_counts))
+
+    # Continue with the rest of the function as before
     # Ensure both datasets have common genes
     common_genes <- intersect(rownames(tumor_counts), rownames(normal_counts))
     if (length(common_genes) == 0) {
       warning(paste("No common genes found between tumor and normal counts for PDC code:", pdc_code))
       next
     }
+
 
     # Merge count data
     counts_data <- cbind(tumor_counts[common_genes, ], normal_counts[common_genes, ])
@@ -239,6 +248,7 @@ cptda <- function(cancer.type,
   # 4. Return results
   return(invisible(plots_list))
 }
+
 
 
 
