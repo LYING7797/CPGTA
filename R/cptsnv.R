@@ -44,8 +44,8 @@ cptsnv <- function(cancer.type = NULL,
                    PDC.study.identifier = NULL,
                    top_n_genes = 20,
                    min_mut_freq = 0.05) {
-  cancer_pdc_info_path = "cancer_PDC_info.csv"  # 修改为当前文件夹
-  snv_zip_path = "Simple Nucleotide Variation.zip"  # 压缩包路径
+  cancer_pdc_info_path = "cancer_PDC_info.csv"  
+  snv_zip_path = "Simple Nucleotide Variation.zip"  
 
   # Create output directories
   output_dir <- file.path(getwd(), "snv_analysis_results")
