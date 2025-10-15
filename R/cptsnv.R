@@ -13,31 +13,54 @@
 #' @param min_mut_freq Numeric. Minimum mutation frequency threshold for gene selection. Default is 0.05.
 #'
 #' @return A list containing analysis results, summary statistics, and generated visualization objects.
-#'
+
 #' @examples
 #' # SNV analysis for BRCA cancer type
 #' result <- cptsnv(cancer.type = "BRCA")
 #'
 #' # SNV analysis for specific PDC identifiers
-#' result <- cptsnv(PDC.study.identifier = c("PDC001", "PDC002"))
-#' @importFrom maftools read.maf oncoplot lollipopPlot
-#' @importFrom ggplot2 ggplot aes geom_bar theme_bw labs
+#' result <- cptsnv(PDC.study.identifier = c("PDC000125", "PDC00234"))
+#'
+#' # Analyze SNVs in lung cancer with custom parameters
+#' #' lung_cancer_results <- cptsnv(
+#'   cancer.type = "LUAD",
+#'   top_n_genes = 30,
+#'   min_mut_freq = 0.03
+#' )
+#' @importFrom dplyr filter pull mutate arrange group_by summarize select
+#' @importFrom ggplot2 ggplot aes geom_bar geom_hline annotate theme_minimal theme element_blank element_text labs scale_fill_brewer geom_text position_stack coord_polar geom_histogram geom_density geom_vline
+#' @importFrom maftools read.maf merge_mafs getSampleSummary getGeneSummary oncoplot somaticInteractions plotmafSummary
+#' @importFrom tibble tibble
+#' @importFrom tidyr pivot_longer
+#' @importFrom stats median quantile density
+#' @importFrom utils read.csv write.csv unzip
+#' @importFrom grDevices pdf dev.off
+#'
+#'
 #' @export
 
 
 cptsnv <- function(cancer.type = NULL,
-                        PDC.study.identifier = NULL,
-                        top_n_genes = 20,
-                        min_mut_freq = 0.05) {
-  cancer_pdc_info_path = "./data1/cancer_PDC_info.csv"
+                   PDC.study.identifier = NULL,
+                   top_n_genes = 20,
+                   min_mut_freq = 0.05) {
+  cancer_pdc_info_path = "cancer_PDC_info.csv"  # 修改为当前文件夹
+  snv_zip_path = "Simple Nucleotide Variation.zip"  # 压缩包路径
+
   # Create output directories
   output_dir <- file.path(getwd(), "snv_analysis_results")
   plots_dir <- file.path(output_dir, "plots")
   dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
   dir.create(plots_dir, showWarnings = FALSE, recursive = TRUE)
+
   # Parameter validation
   if (is.null(cancer.type) && is.null(PDC.study.identifier)) {
     stop("At least one of the parameters, cancer.type or PDC.study.identifier, must be provided.")
+  }
+
+  # Check if SNV zip file exists
+  if (!file.exists(snv_zip_path)) {
+    stop(paste("SNV zip file not found:", snv_zip_path))
   }
 
   # Load required packages
@@ -52,6 +75,7 @@ cptsnv <- function(cancer.type = NULL,
     }
     library(pkg, character.only = TRUE)
   }
+
 
   cancer_pdc_info <- read.csv(cancer_pdc_info_path, check.names = FALSE)
 
@@ -81,6 +105,25 @@ cptsnv <- function(cancer.type = NULL,
     analysis_title <- paste0("PDC分析: ", paste(matched_pdcs, collapse=", "))
   }
 
+  temp_dir <- tempdir()
+
+  read_rds_from_zip <- function(zip_path, file_name) {
+    #
+    zip_contents <- unzip(zip_path, list = TRUE)
+    if (!(file_name %in% zip_contents$Name)) {
+      return(NULL)
+    }
+
+    temp_file <- file.path(temp_dir, basename(file_name))
+    unzip(zip_path, files = file_name, exdir = temp_dir)
+
+    result <- readRDS(temp_file)
+
+    file.remove(temp_file)
+
+    return(result)
+  }
+
   # If multiple PDCs are provided, merge data for the same cancer type
   if (length(matched_pdcs) > 1) {
     message(paste("Provided", length(matched_pdcs), "PDC identifiers, merging for analysis:",
@@ -91,10 +134,11 @@ cptsnv <- function(cancer.type = NULL,
     successful_pdcs <- c()
 
     for (pdc in matched_pdcs) {
-      maf_file <- file.path("./data1/Simple Nucleotide Variation", paste0(pdc, ".rds"))
-      if (file.exists(maf_file)) {
-        message(paste("Loading MAF data:", maf_file))
-        current_maf <- readRDS(maf_file)
+      maf_file_in_zip <- paste0(pdc, ".rds")
+      current_maf <- read_rds_from_zip(snv_zip_path, maf_file_in_zip)
+
+      if (!is.null(current_maf)) {
+        message(paste("Loading MAF data:", maf_file_in_zip))
 
         # Convert to MAF object if not already
         if (!inherits(current_maf, "MAF")) {
@@ -109,7 +153,7 @@ cptsnv <- function(cancer.type = NULL,
 
         successful_pdcs <- c(successful_pdcs, pdc)
       } else {
-        warning(paste("MAF file not found:", maf_file))
+        warning(paste("MAF file not found in zip:", maf_file_in_zip))
       }
     }
 
@@ -125,15 +169,15 @@ cptsnv <- function(cancer.type = NULL,
 
   } else {
     pdc_id <- matched_pdcs
-    # Load single MAF file
-    maf_file <- file.path("./data1/Simple Nucleotide Variation", paste0(pdc_id, ".rds"))
-    message(paste("Loading MAF data:", maf_file))
+    #
+    maf_file_in_zip <- paste0(pdc_id, ".rds")
+    message(paste("Loading MAF data:", maf_file_in_zip, "from zip file"))
 
-    if (!file.exists(maf_file)) {
-      stop(paste("File does not exist:", maf_file))
+    maf_data <- read_rds_from_zip(snv_zip_path, maf_file_in_zip)
+
+    if (is.null(maf_data)) {
+      stop(paste("File does not exist in zip:", maf_file_in_zip))
     }
-
-    maf_data <- readRDS(maf_file)
 
     if (!inherits(maf_data, "MAF")) {
       maf_data <- read.maf(maf = maf_data)
@@ -210,7 +254,7 @@ cptsnv <- function(cancer.type = NULL,
     annotate("text", x = total_samples/2, y = tmb_stats$median_tmb * 1.1,
              label = paste0("Median:  ", round(tmb_stats$median_tmb, 2)), color = "red") +
     theme_minimal() +
-    theme(axis.text.x = element_blank()) +  # 隐藏横坐标文本
+    theme(axis.text.x = element_blank()) +
     labs(title = paste0("Tumor Mutation Burden Distribution - ", analysis_title),
          subtitle = paste0("Number of samples:  ", total_samples, ", median TMB: ", round(tmb_stats$median_tmb, 2)),
          x = "sample", y = "Mutations per megabase (TMB)")
@@ -218,7 +262,7 @@ cptsnv <- function(cancer.type = NULL,
 
   # Create TMB density distribution plot
   tmb_density_plot <- ggplot(tmb, aes(x = TMB)) +
-    geom_histogram(aes(y = ..density..),
+    geom_histogram(aes(y = after_stat(density)),
                    bins = 30,
                    fill = "lightblue",
                    color = "black") +
@@ -328,7 +372,7 @@ cptsnv <- function(cancer.type = NULL,
   # 5. Exclusivity and co-occurrence analysis - summary analysis ----
   message("Analyzing mutation exclusivity and co-occurrence (summary analysis)...")
   tryCatch({
-    pdf(file.path(plots_dir, "somatic_interactions.pdf"), width = 12, height = 12)
+    pdf(file.path(plots_dir, "somatic_interactions.pdf"), width = 15, height = 15)
 
     # 使用参数调整
     si_result <- somaticInteractions(
@@ -454,7 +498,7 @@ cptsnv <- function(cancer.type = NULL,
     "Median TMB" = round(tmb_stats$median_tmb, 2),
     "Gene with Highest Mutation Frequency" = ifelse(nrow(mut_freq) > 0, mut_freq$Hugo_Symbol[1], "No Data"),
     "Highest Mutation Frequency" = ifelse(nrow(mut_freq) > 0,
-                    paste0(round(mut_freq$mut_freq[1] * 100, 2), "%"), "No Data"),
+                                          paste0(round(mut_freq$mut_freq[1] * 100, 2), "%"), "No Data"),
     "Analysis Date" = as.character(Sys.Date())
   )
 
@@ -462,12 +506,12 @@ cptsnv <- function(cancer.type = NULL,
   if (exists("var_type_summary") && !is.null(var_type_summary)) {
     snp_row <- which(var_type_summary$Variant_Type == "SNP")
     if (length(snp_row) > 0) {
-      summary_df$SNP比例 <- paste0(round(var_type_summary$Percentage[snp_row], 2), "%")
+      summary_df$SNP_ratio <- paste0(round(var_type_summary$Percentage[snp_row], 2), "%")
     } else {
-      summary_df$SNP比例 <- "No Data"
+      summary_df$SNP_ratio <- "No Data"
     }
   } else {
-    summary_df$SNP比例 <- "No Data"
+    summary_df$SNP_ratio <- "No Data"
   }
 
   results$summary_table <- summary_df
