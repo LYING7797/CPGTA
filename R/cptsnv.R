@@ -102,7 +102,7 @@ cptsnv <- function(cancer.type = NULL,
   } else {
     # Use provided PDC study identifier directly
     matched_pdcs <- PDC.study.identifier
-    analysis_title <- paste0("PDC分析: ", paste(matched_pdcs, collapse=", "))
+    analysis_title <- paste0("PDC analysis: ", paste(matched_pdcs, collapse=", "))
   }
 
   temp_dir <- tempdir()
