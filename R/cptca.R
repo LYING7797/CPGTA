@@ -123,7 +123,6 @@ cptca <- function(gene.name,
       unzip(zip_path, files = file_name, exdir = temp_dir, overwrite = TRUE)
       temp_file <- file.path(temp_dir, file_name)
       df <- read.csv(temp_file, stringsAsFactors = FALSE, row.names = 1)
-      # 清理临时文件
       unlink(temp_file)
       return(df)
     }, error = function(e) {
@@ -217,7 +216,7 @@ cptca <- function(gene.name,
   corr_tumor  <- calc_correlation_by_gene(omics1_tumor, omics2_tumor)
   corr_normal <- calc_correlation_by_gene(omics1_normal, omics2_normal)
 
-  # 5. Organize results and visualization (保持不变)
+  # 5. Organize results and visualization 
   if (is.null(corr_tumor)) {
     corr_tumor <- data.frame(gene = character(0), correlation = numeric(0), Tissue = character(0))
   } else {
