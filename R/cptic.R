@@ -30,15 +30,49 @@ cptic <- function(cancer.type, data.category) {
 
   # Define file paths
   cancer_pdc_info_file <- "cancer_PDC_info.csv"
-  alltumor_file <- "./TME/alltumor.csv"
-  tme_folder <- "./TME/"
+  tme_zip_file <- "TME.zip"
 
   # Check if files exist
   if (!file.exists(cancer_pdc_info_file)) {
     stop(paste("Error: File not found:", cancer_pdc_info_file))
   }
-  if (!file.exists(alltumor_file)) {
-    stop(paste("Error: File not found:", alltumor_file))
+  if (!file.exists(tme_zip_file)) {
+    stop(paste("Error: File not found:", tme_zip_file))
+  }
+
+  # Helper function to read files from zip
+  read_file_from_zip <- function(zip_path, file_name, is_csv = TRUE, has_header = TRUE, row_names = NULL) {
+    if (!file.exists(zip_path)) {
+      stop(paste("Error: Zip file not found:", zip_path))
+    }
+
+    # Check if the file exists in the zip
+    zip_contents <- unzip(zip_path, list = TRUE)$Name
+    if (!file_name %in% zip_contents) {
+      stop(paste("Error: File", file_name, "not found in", zip_path))
+    }
+
+    # Create a temporary directory and extract the file
+    temp_dir <- tempdir()
+    tryCatch({
+      unzip(zip_path, files = file_name, exdir = temp_dir, overwrite = TRUE)
+      temp_file_path <- file.path(temp_dir, file_name)
+
+      if (is_csv) {
+        if (!is.null(row_names)) {
+          data <- read.csv(temp_file_path, row.names = row_names, stringsAsFactors = FALSE)
+        } else {
+          data <- read.csv(temp_file_path, stringsAsFactors = FALSE)
+        }
+      } else {
+        data <- read.delim(temp_file_path, stringsAsFactors = FALSE)
+      }
+
+      unlink(temp_file_path)
+      return(data)
+    }, error = function(e) {
+      stop(paste("Error reading file from zip:", e$message))
+    })
   }
 
   # Read cancer_PDC_info.csv
@@ -63,31 +97,18 @@ cptic <- function(cancer.type, data.category) {
 
   # Choose the appropriate file based on data.category
   if (data.category == "Transcriptome") {
-    classified_file <- file.path(tme_folder, "classified_samples_rna.tsv")
+    classified_file <- "classified_samples_rna.tsv"
     pdc_column <- "Transcriptome"
   } else { # Proteome
-    classified_file <- file.path(tme_folder, "classified_samples_pro.tsv")
+    classified_file <- "classified_samples_pro.tsv"
     pdc_column <- "Proteome"
   }
 
-  # Check if classified file exists
-  if (!file.exists(classified_file)) {
-    stop(paste("Error: File not found:", classified_file))
-  }
+  # Read alltumor.csv from zip
+  alltumor <- read_file_from_zip(tme_zip_file, "alltumor.csv", is_csv = TRUE, row_names = 1)
 
-  # Read classified samples file
-  classified_samples <- tryCatch({
-    read.delim(classified_file, stringsAsFactors = FALSE)
-  }, error = function(e) {
-    stop(paste("Error: Unable to read file:", classified_file))
-  })
-
-  # Read alltumor.csv
-  alltumor <- tryCatch({
-    read.csv(alltumor_file, row.names = 1, stringsAsFactors = FALSE)
-  }, error = function(e) {
-    stop("Error: Unable to read 'alltumor.csv' file.")
-  })
+  # Read classified samples file from zip
+  classified_samples <- read_file_from_zip(tme_zip_file, classified_file, is_csv = FALSE)
 
   # Get the PDC value corresponding to the column name (based on cancer.type)
   # First, find the relevant row for cancer.type in 'cancer_PDC_info.csv'
@@ -107,8 +128,6 @@ cptic <- function(cancer.type, data.category) {
     }
   }
 
-
-
   # Get corresponding PDC values
   pdc_values <- alltumor[[pdc_column]]
 
@@ -126,7 +145,6 @@ cptic <- function(cancer.type, data.category) {
   # Return the result matrix
   return(result_matrix)
 }
-
 
 
 
