@@ -20,10 +20,9 @@ devtools::install_github("LYING7797/CPGTA")
 ## Required Data
 The package requires additional data files to function properly. Please download the required data using one of the following methods:
 
-From Zenodo (Recommended):
-Download the data from our Zenodo repository (DOI: 10.5281/zenodo.17357650)
-
-After downloading, place the "data1" folder in the installation directory of the CPGTA package. The typical location would be within your R library path where the CPGTA package is installed.
+From Zenodo (Recommended): Download the data from our Zenodo repository (DOI: 10.5281/zenodo.17357650)
+        
+After downloading, place all the data in the installation directory of the CPGTA package. The typical location would be within your R library path where the CPGTA package is installed.
 
 To find the correct location, you can use:
 
