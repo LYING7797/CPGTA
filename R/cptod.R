@@ -183,10 +183,23 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
     }
 
     results <- list()
+    zip_path <- file.path(base_dir, "Biospecimen.zip")
+
+    if (!file.exists(zip_path)) {
+      stop("Biospecimen.zip file not found.")
+    }
+
+    zip_contents <- unzip(zip_path, list = TRUE)$Name
+
     for (pdc_id in pdc_ids) {
-      file_path <- file.path(base_dir, "Biospecimen", paste0(pdc_id, "_biospecimen.csv"))
-      if (file.exists(file_path)) {
-        results[[pdc_id]] <- read.csv(file_path, check.names = FALSE)
+      file_pattern <- paste0("^", pdc_id, "_biospecimen\\.csv$")
+      matching_files <- grep(file_pattern, zip_contents, value = TRUE)
+
+      for (file_name in matching_files) {
+        data <- read_csv_from_zip(zip_path, file_name)
+        if (!is.null(data)) {
+          results[[pdc_id]] <- data
+        }
       }
     }
 
@@ -204,16 +217,30 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
     }
 
     results <- list()
+    zip_path <- file.path(base_dir, "Clinical data.zip")
+
+    if (!file.exists(zip_path)) {
+      stop("Clinical data.zip file not found.")
+    }
+
+    zip_contents <- unzip(zip_path, list = TRUE)$Name
+
     for (pdc_id in pdc_ids) {
-      dir_path <- file.path(base_dir, "Clinical data", pdc_id)
-      if (dir.exists(dir_path)) {
-        files <- list.files(dir_path, pattern = "\\.csv$", full.names = TRUE)
-        if (length(files) > 0) {
-          pdc_clinical_data <- list()
-          for (file in files) {
-            file_name <- basename(file)
-            pdc_clinical_data[[file_name]] <- read.csv(file, check.names = FALSE)
+      file_pattern <- paste0("^", pdc_id, "/")
+      matching_files <- grep(file_pattern, zip_contents, value = TRUE)
+
+      if (length(matching_files) > 0) {
+        pdc_clinical_data <- list()
+        for (file_name in matching_files) {
+          if (grepl("\\.csv$", file_name)) {
+            data <- read_csv_from_zip(zip_path, file_name)
+            if (!is.null(data)) {
+              simple_file_name <- basename(file_name)
+              pdc_clinical_data[[simple_file_name]] <- data
+            }
           }
+        }
+        if (length(pdc_clinical_data) > 0) {
           results[[pdc_id]] <- pdc_clinical_data
         }
       }
@@ -392,6 +419,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
 
   return(results)
 }
+
 
 
 
