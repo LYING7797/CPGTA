@@ -36,7 +36,7 @@ cptgev <- function(gene.name, data.category) {
     stop("data.category must be either 'Proteome' or 'Transcriptome'")
   }
 
-  # Set zip file path (在当前目录下)
+  # Set zip file path 
   zip_path <- paste0(data.category, ".zip")
 
   # Check if zip file exists
