@@ -12,14 +12,13 @@
 #'
 #' @return A data frame containing classified tumor samples and their immunological subtypes
 #'         for the specified cancer type and omics category.
-#'
+
 #' @examples
 #' # Classify transcriptome samples for LUSC
 #' result <- cptic(cancer.type = "LUSC", data.category = "Transcriptome")
 #'
 #' # Classify proteome samples for BRCA
 #' result <- cptic(cancer.type = "BRCA", data.category = "Proteome")
-
 #' @importFrom stats hclust dist kmeans
 #' @export
 
@@ -30,9 +29,9 @@ cptic <- function(cancer.type, data.category) {
   }
 
   # Define file paths
-  cancer_pdc_info_file <- "./data1/cancer_PDC_info.csv"
-  alltumor_file <- "./data1/TME/alltumor.csv"
-  tme_folder <- "./data1/TME/"
+  cancer_pdc_info_file <- "cancer_PDC_info.csv"
+  alltumor_file <- "./TME/alltumor.csv"
+  tme_folder <- "./TME/"
 
   # Check if files exist
   if (!file.exists(cancer_pdc_info_file)) {
@@ -127,6 +126,12 @@ cptic <- function(cancer.type, data.category) {
   # Return the result matrix
   return(result_matrix)
 }
+
+
+
+
+
+
 
 
 
