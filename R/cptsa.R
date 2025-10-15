@@ -29,8 +29,6 @@
 #' @importFrom ggplot2 theme_bw theme element_blank
 #'
 #' @export
-
-
 cptsa <- function(cancer.type, data.category, gene.name) {
   # Check the validity of input parameters
   if (missing(cancer.type)) stop("Cancer type is missing")
@@ -120,20 +118,33 @@ cptsa <- function(cancer.type, data.category, gene.name) {
     # Initialize results for current PDC ID
     current_result <- list()
 
-    # Clinical data file path (still in folder)
-    clinical_file <- file.path("Clinical data", pdc_id, paste0(pdc_id, ".csv"))
-    if (!file.exists(clinical_file)) {
-      warning(sprintf("Clinical data file not found for PDC ID %s. Skipping.", pdc_id))
+    # Clinical data file path (now in zip file with folders)
+    clinical_zip_path <- "Clinical data.zip"
+    clinical_file_path <- file.path(pdc_id, paste0(pdc_id, ".csv"))
+
+    if (!file.exists(clinical_zip_path)) {
+      warning(sprintf("Clinical data zip file not found. Skipping PDC ID %s.", pdc_id))
       next
     }
 
-    # Read clinical data
-    clinical <- read.csv(clinical_file, check.names = FALSE)
+    # Check if clinical file exists in the zip
+    clinical_zip_contents <- unzip(clinical_zip_path, list = TRUE)$Name
+    if (!(clinical_file_path %in% clinical_zip_contents)) {
+      warning(sprintf("Clinical data file %s not found in %s. Skipping.", clinical_file_path, clinical_zip_path))
+      next
+    }
 
-    # Build zip file paths
-    zip_path <- paste0(data.category, ".zip")
-    if (!file.exists(zip_path)) {
-      warning(sprintf("Zip file %s not found. Skipping.", zip_path))
+    # Read clinical data from zip
+    clinical <- read_csv_from_zip(clinical_zip_path, clinical_file_path)
+    if (is.null(clinical)) {
+      warning(sprintf("Failed to read clinical data for PDC ID %s. Skipping.", pdc_id))
+      next
+    }
+
+    # Build zip file paths for expression data
+    expression_zip_path <- paste0(data.category, ".zip")
+    if (!file.exists(expression_zip_path)) {
+      warning(sprintf("Zip file %s not found. Skipping.", expression_zip_path))
       next
     }
 
@@ -147,16 +158,16 @@ cptsa <- function(cancer.type, data.category, gene.name) {
     }
 
     # Get the list of zip file contents
-    zip_contents <- unzip(zip_path, list = TRUE)$Name
+    zip_contents <- unzip(expression_zip_path, list = TRUE)$Name
 
     # Check if tumor expression file exists in the zip
     if (!(expression_file %in% zip_contents)) {
-      warning(sprintf("Gene expression file %s not found in %s. Skipping.", expression_file, zip_path))
+      warning(sprintf("Gene expression file %s not found in %s. Skipping.", expression_file, expression_zip_path))
       next
     }
 
     # Read tumor gene expression data from zip
-    tumor_expression <- read_csv_with_rownames_from_zip(zip_path, expression_file)
+    tumor_expression <- read_csv_with_rownames_from_zip(expression_zip_path, expression_file)
     if (is.null(tumor_expression)) {
       warning(sprintf("Failed to read tumor expression data for PDC ID %s. Skipping.", pdc_id))
       next
@@ -167,7 +178,7 @@ cptsa <- function(cancer.type, data.category, gene.name) {
     normal_expression <- NULL
 
     if (has_normal_data) {
-      normal_expression <- read_csv_with_rownames_from_zip(zip_path, normal_expression_file)
+      normal_expression <- read_csv_with_rownames_from_zip(expression_zip_path, normal_expression_file)
       if (is.null(normal_expression)) {
         has_normal_data <- FALSE
         warning(sprintf("Failed to read normal expression data for PDC ID %s.", pdc_id))
@@ -264,8 +275,5 @@ cptsa <- function(cancer.type, data.category, gene.name) {
 
   return(results_list)
 }
-
-
-
 
 
