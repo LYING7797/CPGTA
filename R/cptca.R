@@ -1,8 +1,6 @@
-#' @title
-#' Clinical Proteogenomic Tumor Correlation Analysis(cptca)
+#' @title Clinical Proteogenomic Tumor Correlation Analysis(cptca)
 #'
-#' @description
-#' This function calculates the gene-wise correlation between two omics datasets (e.g., Transcriptome and Proteome)
+#' @description This function calculates the gene-wise correlation between two omics datasets (e.g., Transcriptome and Proteome)
 #' for a specified cancer type and gene. It reads, merges, and aligns data from multiple PDC studies if necessary,
 #' and visualizes the correlation distribution between tumor and normal samples, highlighting the specified gene.
 #'
@@ -16,17 +14,16 @@
 #'
 #' @examples
 #'   result <- cptca(gene.name = "TP53", cancer.type = "BRCA", data.category = c("Transcriptome", "Proteome"))
-
-#' @importFrom stats cor cor.test p.adjust
-#' @importFrom ggplot2 ggplot aes geom_point theme_bw labs
+#' @importFrom utils read.csv unzip
+#' @importFrom stats cor t.test
+#' @importFrom ggplot2 ggplot aes geom_boxplot scale_fill_manual theme_bw labs theme geom_point geom_text position_jitter annotate
 #' @export
-
 
 
 cptca <- function(gene.name,
                   cancer.type,
                   data.category) {
-  base_path <- "./data1"
+
 
   # 1. Parameter checking
   if (missing(gene.name) | missing(cancer.type) | missing(data.category)) {
@@ -42,7 +39,7 @@ cptca <- function(gene.name,
   }
 
   # 2. Read cancer_PDC_info.csv and get PDC codes
-  pdc_info_file <- file.path(base_path, "cancer_PDC_info.csv")
+  pdc_info_file <- file.path("cancer_PDC_info.csv")
   if (!file.exists(pdc_info_file)) {
     stop("Error: 'cancer_PDC_info.csv' file not found. Please check the path or filename.")
   }
@@ -58,7 +55,6 @@ cptca <- function(gene.name,
 
   # Return corresponding PDC column name based on omics type
   get_pdc_col_name <- function(omics) {
-    # Now column name is the same as omics type
     if (omics %in% colnames(cancer_info)) {
       return(omics)
     } else {
@@ -66,11 +62,11 @@ cptca <- function(gene.name,
     }
   }
 
-  # Get all PDC codes for the omics type in matched_rows (may be multiple)
+  # Get all PDC codes for the omics type in matched_rows
   get_pdc_codes <- function(omics) {
     pdc_col <- get_pdc_col_name(omics)
     codes <- cancer_info[[pdc_col]][matched_rows]
-    codes <- unique(codes)  # 去重
+    codes <- unique(codes)
     codes <- codes[!is.na(codes) & codes != ""]
     if (length(codes) == 0) {
       warning(paste("Warning: No corresponding PDC code found for", omics, "in the matched rows."))
@@ -87,7 +83,7 @@ cptca <- function(gene.name,
     stop("Error: No PDC codes found for either omics type, cannot proceed.")
   }
 
-  # 3. Data reading: merge files from multiple PDC codes if needed
+  # 3. Data reading:
   get_omics_file_name <- function(omics, pdc_code, tissue_type = c("tumor","normal")) {
     tissue_type <- match.arg(tissue_type)
     prefix <- switch(omics,
@@ -103,31 +99,56 @@ cptca <- function(gene.name,
     return(file_name)
   }
 
-  safe_read <- function(fp) {
-    if (!file.exists(fp)) {
-      warning("Warning: File does not exist => ", fp)
+
+  safe_read_from_zip <- function(zip_path, file_name) {
+    if (!file.exists(zip_path)) {
+      warning("Warning: Zip file does not exist => ", zip_path)
       return(NULL)
     }
-    df <- read.csv(fp, stringsAsFactors = FALSE, row.names = 1)
-    return(df)
+
+
+    zip_contents <- unzip(zip_path, list = TRUE)$Name
+
+
+    if (!file_name %in% zip_contents) {
+      warning("Warning: File not found in zip => ", file_name)
+      return(NULL)
+    }
+
+
+    temp_dir <- tempdir()
+
+
+    tryCatch({
+      unzip(zip_path, files = file_name, exdir = temp_dir, overwrite = TRUE)
+      temp_file <- file.path(temp_dir, file_name)
+      df <- read.csv(temp_file, stringsAsFactors = FALSE, row.names = 1)
+      # 清理临时文件
+      unlink(temp_file)
+      return(df)
+    }, error = function(e) {
+      warning("Warning: Error reading file from zip => ", e$message)
+      return(NULL)
+    })
   }
 
-  # For the same Omics + Tissue type, there may be multiple PDC codes, need to merge (align by row names, merge columns)
+
   read_and_merge_files <- function(omics, tissue_type, pdc_codes) {
     if (length(pdc_codes) == 0) {
       return(NULL)
     }
 
+    zip_path <- file.path(paste0(omics, ".zip"))
+
     dfs <- list()
     for (code in pdc_codes) {
-      folder <- file.path(base_path, omics)
       fn <- get_omics_file_name(omics, code, tissue_type = tissue_type)
-      fp <- file.path(folder, fn)
-      tmp <- safe_read(fp)
+      tmp <- safe_read_from_zip(zip_path, fn)
       if (!is.null(tmp)) {
         dfs[[code]] <- tmp
       }
     }
+
     if (length(dfs) == 0) {
       return(NULL)
     }
@@ -138,10 +159,12 @@ cptca <- function(gene.name,
       warning("Warning: No common genes found among multiple PDC code data. Returning NULL.")
       return(NULL)
     }
+
     # Subset common genes
     for (i in seq_along(dfs)) {
       dfs[[i]] <- dfs[[i]][common_genes, , drop = FALSE]
     }
+
     # Merge columns
     merged_df <- do.call(cbind, dfs)
     return(merged_df)
@@ -155,7 +178,7 @@ cptca <- function(gene.name,
   omics2_tumor   <- read_and_merge_files(data.category[2], "tumor",   pdc_codes_2)
   omics2_normal  <- read_and_merge_files(data.category[2], "normal", pdc_codes_2)
 
-  # 4. Correlation calculation function
+  # 4. Correlation calculation function (保持不变)
   calc_correlation_by_gene <- function(df1, df2) {
     if (is.null(df1) || is.null(df2)) {
       return(NULL)
@@ -194,7 +217,7 @@ cptca <- function(gene.name,
   corr_tumor  <- calc_correlation_by_gene(omics1_tumor, omics2_tumor)
   corr_normal <- calc_correlation_by_gene(omics1_normal, omics2_normal)
 
-  # 5. Organize results and visualization
+  # 5. Organize results and visualization (保持不变)
   if (is.null(corr_tumor)) {
     corr_tumor <- data.frame(gene = character(0), correlation = numeric(0), Tissue = character(0))
   } else {
@@ -237,7 +260,7 @@ cptca <- function(gene.name,
     ) +
     theme(legend.position = "none")
 
-  #   # Add points and value labels for the specified gene on the boxplot
+  # Add points and value labels for the specified gene on the boxplot
   if (nrow(gene_of_interest) > 0) {
     p <- p +
       geom_point(
@@ -292,6 +315,4 @@ cptca <- function(gene.name,
     plot = p
   )))
 }
-
-
 
