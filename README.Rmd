@@ -15,18 +15,29 @@ install.packages("devtools")
 
 # Install cptca from GitHub
 devtools::install_github("LYING7797/CPGTA")
-
-(All data in the "data1" folder can also be accessed via the following link: https://drive.google.com/drive/folders/1Yr_msBFVwu26F4MwGBgbAu0255vb02Eq?usp=drive_link.
-Put the "data1" folder in the directory where the CPTGA package folder is located)
 ```
+
+## Required Data
+The package requires additional data files to function properly. Please download the required data using one of the following methods:
+
+From Zenodo (Recommended):
+Download the data from our Zenodo repository (DOI: 10.5281/zenodo.17357650)
+
+After downloading, place the "data1" folder in the installation directory of the CPGTA package. The typical location would be within your R library path where the CPGTA package is installed.
+
+To find the correct location, you can use:
+
+```{r cars}
+find.package("CPGTA")
+```
+Place all the data in the directory shown by the command above.
+
 
 ## Functions
 
 
 cptod()
-This function is used to obtain cancer multi-omics data from the data directory.
-You can filter and download relevant data according to parameters such as cancer type,
-data category, data type, and sample type.
+This function is used to obtain cancer multi-omics data from the data directory. You can filter and download relevant data according to parameters such as cancer type, data category, data type, and sample type.
 
 Arguments:
 @param cancer.type String. The name or abbreviation of the cancer type.
@@ -85,7 +96,7 @@ snv_data <- cptod(
   data.category = "Simple Nucleotide Variation"
 )
 
-result2 <- cptod(
+result1 <- cptod(
   cancer.type = "OV",
   data.category = "Biospecimen",
   PDC.study.identifier = "PDC000113",
@@ -93,41 +104,18 @@ result2 <- cptod(
   sample.type = NULL)
 
 
-result3 <- cptod(
+result2 <- cptod(
   cancer.type = "OV",
   data.category = "Transcriptome",
   PDC.study.identifier = NULL,
   data.type = "Normalized",
   sample.type = "tumor")
 
-result4 <- cptod(
-  cancer.type = "OV",
-  data.category = "Transcriptome",
-  PDC.study.identifier = NULL,
-  data.type = NULL,
-  sample.type = "tumor")
-
-result5 <- cptod(
-  cancer.type = "PDAC",
-  data.category = "Proteome",
-  PDC.study.identifier = NULL,
-  data.type = NULL,
-  sample.type = "tumor")
-
-result6 <- cptod(
-  cancer.type = "UCEC",
-  data.category = "Phosphoproteome",
-  PDC.study.identifier = "PDC000126",
-  data.type = c("Tidied","Normalized"),
-  sample.type = c("tumor","normal"))
-
 ```
 
 
 cptca()
-This function calculates the gene-wise correlation between two omics datasets (e.g., Transcriptome and Proteome)
-for a specified cancer type and gene. It reads, merges, and aligns data from multiple PDC studies if necessary,
-and visualizes the correlation distribution between tumor and normal samples, highlighting the specified gene.
+This function calculates the gene-wise correlation between two omics datasets (e.g., Transcriptome and Proteome) for a specified cancer type and gene. It reads, merges, and aligns data from multiple PDC studies if necessary,and visualizes the correlation distribution between tumor and normal samples, highlighting the specified gene.
 
 Arguments:
 @param gene.name String. The gene name of interest for correlation analysis.
@@ -147,13 +135,11 @@ res <- cptca(
 ```
 
 cptda()
- Perform differential analysis between tumor and normal samples for a specific cancer type using RNA-seq data.
-The function reads counts data from tumor and normal samples based on PDC codes, performs differential expression analysis
-using DESeq2, and generates volcano plots highlighting significant genes based on specified thresholds.
+Perform differential analysis between tumor and normal samples for a specific cancer type using RNA-seq data. The function reads counts data from tumor and normal samples based on PDC codes, performs differential expression analysis using DESeq2, and generates volcano plots highlighting significant genes based on specified thresholds.
 
 @param cancer.type String. The name or abbreviation of the cancer type.
 @param log2FC Numeric. Threshold for log2 fold change, up to one decimal place.
-@param top.gene Integer. Number of top differentially expressed genes to label in the volcano plot (maximum 20).
+@param top.gene Integer. Number of top differentially expressed genes to label in the volcano plot.
 @param gene.name Character vector or NULL. Optional. Names of specific genes to highlight in the volcano plot. If provided and the genes exist in the dataset, they will be highlighted with a different color and size regardless of whether they're in the top genes.
 @return A list of lists, with each sublist containing:
    \item{diff_table}{A data frame of differential analysis results, including gene names, log2FC, p-values, adjusted p-values, and group assignment.}
@@ -174,10 +160,7 @@ res <- cptda (
 ```
 
 cptic()
-This function classifies tumor samples based on their immunological profiles,
-facilitating the study and understanding of the tumor microenvironment.
-It integrates clinical and proteogenomic data to assign immunosubtypes to tumor samples
-for a specified cancer type and omics data category.
+This function classifies tumor samples based on their immunological profiles,facilitating the study and understanding of the tumor microenvironment. It integrates clinical and proteogenomic data to assign immunosubtypes to tumor samples for a specified cancer type and omics data category.
 
 @param cancer.type String. The full name or abbreviation of the cancer type (e.g., "BRCA" or "Breast Cancer").
 @param data.category String. Omics data category; must be either "Transcriptome" or "Proteome".
@@ -198,9 +181,7 @@ print(result_pro)
 
 cptsa()
 This function performs survival analysis by correlating clinical outcomes with molecular profiles
-for a specified cancer type, omics data category, and gene of interest.
-It generates survival curves to visualize the relationship between gene expression and patient prognosis,
-helping to identify potential biomarkers for patient stratification.
+for a specified cancer type, omics data category, and gene of interest. It generates survival curves to visualize the relationship between gene expression and patient prognosis, helping to identify potential biomarkers for patient stratification.
 
 @param cancer.type String. The full name or abbreviation of the cancer type (e.g., "BRCA" or "Breast Cancer").
 @param data.category String. Omics data category; must be either "Transcriptome" or "Proteome".
@@ -221,15 +202,12 @@ res <- cptsa(
 ```
 
 cptsnv()
-This function enables the analysis of somatic single-nucleotide variations (SNVs) in cancer.
-It supports the identification of key mutations by integrating data from multiple PDC identifiers or cancer types.
-The function generates comprehensive visualizations, such as mutation frequency plots, oncoplots, and heatmaps,
-to help uncover potential mutation-based biomarkers for patient stratification and therapeutic insights.
+This function enables the analysis of somatic single-nucleotide variations (SNVs) in cancer. It supports the identification of key mutations by integrating data from multiple PDC identifiers or cancer types. The function generates comprehensive visualizations, such as mutation frequency plots, oncoplots, and heatmaps, to help uncover potential mutation-based biomarkers for patient stratification and therapeutic insights.
 
 @param cancer.type String (optional). The full name or abbreviation of the cancer type (e.g., "BRCA" or "Breast Cancer").
 @param PDC.study.identifier String or vector (optional). The PDC study identifier(s) to be analyzed.
 @param top_n_genes Integer. Number of top mutated genes to display in summary plots and co-occurrence analysis. Default is 20.
- @param min_mut_freq Numeric. Minimum mutation frequency threshold for gene selection. Default is 0.05.
+@param min_mut_freq Numeric. Minimum mutation frequency threshold for gene selection. Default is 0.05.
 
 @return A list containing analysis results, summary statistics, and generated visualization objects.
 
@@ -245,8 +223,7 @@ res <- cptsnv(
 
 cptgev()
 This function creates violin plots to compare gene expression levels between tumor and normal tissues
-across multiple cancer types . It supports visualization
-of both transcriptomic and proteomic data.
+across multiple cancer types . It supports visualization of both transcriptomic and proteomic data.
 
 @param gene_name Character string specifying the gene symbol to analyze (e.g., "BRCA1", "TP53").
 @param data_category Character string indicating the data type to analyze, must be either "Proteome" or "Transcriptome".
