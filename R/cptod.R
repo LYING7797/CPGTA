@@ -17,21 +17,21 @@
 #'   Default is NULL, meaning all relevant PDC studies will be found according to cancer type.
 #'
 #' @return Returns a list containing data files filtered by the parameters.
+
 #' @examples
 #' # Download all proteome normalized tumor data for BRCA
 #' result <- cptod(cancer.type = "BRCA", data.category = "Proteome", data.type = "Normalized", sample.type = "tumor")
 #'
 #' # Download biospecimen data for a specific PDC study
 #' result <- cptod(PDC.study.identifier = "PDC000125", data.category = "Biospecimen")
-
-#' @import googledrive
-#' @importFrom utils download.file unzip read.csv
+#'
+#' @importFrom utils read.csv unzip
 #' @export
 
 cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
                   sample.type = NULL, PDC.study.identifier = NULL) {
   # Base directory path
-  base_dir <- "./data1/"
+  base_dir <- "./"
 
   # Check required parameters
   if (is.null(cancer.type) && is.null(PDC.study.identifier)) {
@@ -41,7 +41,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
   # Define valid data categories
   valid_categories <- c("Biospecimen", "Clinical data", "Copy Number Variation",
                         "Phosphoproteome", "Proteome", "Simple Nucleotide Variation",
-                        "Transcriptome")
+                        "Transcriptome", "Counts")
 
   # Validate data category parameter
   if (!data.category %in% valid_categories) {
@@ -53,7 +53,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
   if (!file.exists(cancer_pdc_info_path)) {
     stop("The file cancer_PDC_info.csv was not found, unable to retrieve the mapping between cancer types and PDC studies.")
   }
-  cancer_pdc_info <- read.csv("./data1/cancer_PDC_info.csv",check.names = FALSE)
+  cancer_pdc_info <- read.csv(cancer_pdc_info_path, check.names = FALSE)
 
   # Validate cancer.type parameter
   # Get unique cancer types and abbreviations
@@ -82,9 +82,13 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
   # Determine PDC study ID
   if (!is.null(PDC.study.identifier)) {
     pdc_column <- data.category
+    if (data.category == "Counts") {
+      pdc_column <- "Transcriptome"  # Use Transcriptome column for Counts data
+    }
+
     # Validate whether PDC identifier is valid in the corresponding data.category
     if (!PDC.study.identifier %in% cancer_pdc_info[[pdc_column]]) {
-      stop(paste("The provided PDC.study.identifier is invalid in the", data.category))
+      stop(paste("The provided PDC.study.identifier is invalid in the", pdc_column))
     }
 
     # Validate whether PDC.study.identifier matches cancer.type
@@ -98,6 +102,10 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
     pdc_ids <- PDC.study.identifier
   } else {
     pdc_column <- data.category
+    if (data.category == "Counts") {
+      pdc_column <- "Transcriptome"  # Use Transcriptome column for Counts data
+    }
+
     # Find all matching PDC IDs according to cancer.type
     matching_rows <- cancer_pdc_info[cancer_pdc_info$cancer_type == cancer.type, ]
 
@@ -106,13 +114,66 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
     }
 
     # Get PDC ID corresponding to data.category
-    pdc_column <- data.category
     pdc_ids <- matching_rows[[pdc_column]]
     pdc_ids <- pdc_ids[!is.na(pdc_ids)]
 
     if (length(pdc_ids) == 0) {
-      stop(paste("No PDC studies were found for the specified cancer type ", cancer.type, "under", data.category))
+      stop(paste("No PDC studies were found for the specified cancer type ", cancer.type, "under", pdc_column))
     }
+  }
+
+  # Helper function:Read CSV from zip file
+  read_csv_from_zip <- function(zip_path, file_name) {
+    if (!file.exists(zip_path)) {
+      warning(paste("Zip file not found:", zip_path))
+      return(NULL)
+    }
+
+    # Check if the file exists in the zip
+    zip_contents <- unzip(zip_path, list = TRUE)$Name
+    if (!file_name %in% zip_contents) {
+      return(NULL)
+    }
+
+    # Create a temporary directory and extract the file
+    temp_dir <- tempdir()
+    tryCatch({
+      unzip(zip_path, files = file_name, exdir = temp_dir, overwrite = TRUE)
+      temp_file_path <- file.path(temp_dir, file_name)
+      data <- read.csv(temp_file_path, check.names = FALSE)
+      unlink(temp_file_path)
+      return(data)
+    }, error = function(e) {
+      warning(paste("Error reading file from zip:", e$message))
+      return(NULL)
+    })
+  }
+
+  # Helper function: Read RDS from zip file
+  read_rds_from_zip <- function(zip_path, file_name) {
+    if (!file.exists(zip_path)) {
+      warning(paste("Zip file not found:", zip_path))
+      return(NULL)
+    }
+
+    # Check if the file exists in the zip
+    zip_contents <- unzip(zip_path, list = TRUE)$Name
+    if (!file_name %in% zip_contents) {
+      return(NULL)
+    }
+
+    # Create a temporary directory and extract the file
+    temp_dir <- tempdir()
+    tryCatch({
+      unzip(zip_path, files = file_name, exdir = temp_dir, overwrite = TRUE)
+      temp_file_path <- file.path(temp_dir, file_name)
+      data <- readRDS(temp_file_path)
+      unlink(temp_file_path)
+      return(data)
+    }, error = function(e) {
+      warning(paste("Error reading file from zip:", e$message))
+      return(NULL)
+    })
   }
 
   # Handle Biospecimen data
@@ -123,9 +184,9 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
 
     results <- list()
     for (pdc_id in pdc_ids) {
-      file_path <- file.path(base_dir, data.category, paste0(pdc_id, "_biospecimen.csv"))
+      file_path <- file.path(base_dir, "Biospecimen", paste0(pdc_id, "_biospecimen.csv"))
       if (file.exists(file_path)) {
-        results[[pdc_id]] <- read.csv(file_path)
+        results[[pdc_id]] <- read.csv(file_path, check.names = FALSE)
       }
     }
 
@@ -144,14 +205,14 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
 
     results <- list()
     for (pdc_id in pdc_ids) {
-      dir_path <- file.path(base_dir, data.category, pdc_id)
+      dir_path <- file.path(base_dir, "Clinical data", pdc_id)
       if (dir.exists(dir_path)) {
         files <- list.files(dir_path, pattern = "\\.csv$", full.names = TRUE)
         if (length(files) > 0) {
           pdc_clinical_data <- list()
           for (file in files) {
             file_name <- basename(file)
-            pdc_clinical_data[[file_name]] <- read.csv(file)
+            pdc_clinical_data[[file_name]] <- read.csv(file, check.names = FALSE)
           }
           results[[pdc_id]] <- pdc_clinical_data
         }
@@ -172,15 +233,56 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
     }
 
     results <- list()
+    zip_path <- file.path(base_dir, "Simple Nucleotide Variation.zip")
+
+    if (!file.exists(zip_path)) {
+      stop("Simple Nucleotide Variation.zip file not found.")
+    }
+
     for (pdc_id in pdc_ids) {
-      file_path <- file.path(base_dir, data.category, paste0(pdc_id, ".rds"))
-      if (file.exists(file_path)) {
-        results[[pdc_id]] <- readRDS(file_path)
+      file_name <- paste0(pdc_id, ".rds")
+      data <- read_rds_from_zip(zip_path, file_name)
+      if (!is.null(data)) {
+        results[[pdc_id]] <- data
       }
     }
 
     if (length(results) == 0) {
       stop("No SNV data was found for the specified parameters.")
+    }
+
+    return(results)
+  }
+
+  # Handle Counts data (special case)
+  if (data.category == "Counts") {
+    results <- list()
+
+    # Counts now is a folder in current directory
+    counts_dir <- file.path(base_dir, "Counts")
+    if (!dir.exists(counts_dir)) {
+      warning("The Counts directory was not found.")
+    } else {
+      for (pdc_id in pdc_ids) {
+        file_pattern <- paste0("^", pdc_id)
+        if (!is.null(sample.type)) {
+          sample_patterns <- paste0("_", sample.type, "_", collapse = "|")
+          file_pattern <- paste0(file_pattern, ".*?(", sample_patterns, ")")
+        }
+        file_pattern <- paste0(file_pattern, ".*\\.csv$")
+
+        files <- list.files(counts_dir, pattern = file_pattern, full.names = TRUE)
+
+        for (file in files) {
+          file_name <- basename(file)
+          results[[file_name]] <- read.csv(file, check.names = FALSE)
+        }
+      }
+    }
+
+    if (length(results) == 0) {
+      warning("No Counts data was found for the specified parameters.")
+      return(NULL)
     }
 
     return(results)
@@ -207,9 +309,9 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
 
   # Handle counts data for transcriptome
   if (data.category == "Transcriptome" && "counts" %in% data.type) {
-    counts_dir <- file.path(base_dir, "Transcriptome", "Counts_data")
+    counts_dir <- file.path(base_dir, "Counts")
     if (!dir.exists(counts_dir)) {
-      warning("The Counts_data directory was not found.")
+      warning("The Counts directory was not found.")
     } else {
       for (pdc_id in pdc_ids) {
         file_pattern <- paste0("^", pdc_id)
@@ -223,13 +325,13 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
 
         for (file in files) {
           file_name <- basename(file)
-          results[[file_name]] <- read.csv(file)
+          results[[file_name]] <- read.csv(file, check.names = FALSE)
         }
       }
     }
   }
 
-  # Handle Normalized and tidied data
+  # Handle Normalized and tidied data from zip files
   for (dt in data.type) {
     if (dt == "counts") next
 
@@ -244,26 +346,40 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
                      "Transcriptome" = "rna",
                      stop(paste("Unsupported data category:", data.category)))
 
+    # Build the zip file path
+    zip_path <- file.path(base_dir, paste0(data.category, ".zip"))
+    if (!file.exists(zip_path)) {
+      warning(paste(data.category, ".zip file not found."))
+      next
+    }
+
+    # Get the list of zip file contents
+    zip_contents <- unzip(zip_path, list = TRUE)$Name
+
     for (pdc_id in pdc_ids) {
       if (!is.null(sample.type)) {
         # With sample.type restriction
         for (st in sample.type) {
           file_pattern <- paste0("^", pdc_id, "_", prefix, "_", st, "_.*", suffix, "$")
-          files <- list.files(file.path(base_dir, data.category), pattern = file_pattern, full.names = TRUE)
+          matching_files <- grep(file_pattern, zip_contents, value = TRUE)
 
-          for (file in files) {
-            file_name <- basename(file)
-            results[[file_name]] <- read.csv(file)
+          for (file_name in matching_files) {
+            data <- read_csv_from_zip(zip_path, file_name)
+            if (!is.null(data)) {
+              results[[file_name]] <- data
+            }
           }
         }
       } else {
         # Without sample.type restriction
         file_pattern <- paste0("^", pdc_id, "_", prefix, "_.*", suffix, "$")
-        files <- list.files(file.path(base_dir, data.category), pattern = file_pattern, full.names = TRUE)
+        matching_files <- grep(file_pattern, zip_contents, value = TRUE)
 
-        for (file in files) {
-          file_name <- basename(file)
-          results[[file_name]] <- read.csv(file)
+        for (file_name in matching_files) {
+          data <- read_csv_from_zip(zip_path, file_name)
+          if (!is.null(data)) {
+            results[[file_name]] <- data
+          }
         }
       }
     }
@@ -276,6 +392,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
 
   return(results)
 }
+
 
 
 
