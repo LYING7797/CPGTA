@@ -16,12 +16,19 @@
 #'   \item{logrank_test}{A log-rank test result comparing survival between groups.}
 #'   \item{plot}{A 'ggsurvplot' object visualizing the survival curves and statistics.}
 #'
+#'
 #' @examples
 #' # Survival analysis for TP53 in BRCA transcriptome data
 #' result <- cptsa(cancer.type = "BRCA", data.category = "Transcriptome", gene.name = "TP53")
 #'
 #' # Survival analysis for EGFR in LUAD proteome data
 #' result <- cptsa(cancer.type = "LUAD", data.category = "Proteome", gene.name = "EGFR")
+#' @importFrom utils read.csv unzip
+#' @importFrom survival Surv survfit survdiff
+#' @importFrom survminer ggsurvplot
+#' @importFrom ggplot2 theme_bw theme element_blank
+#'
+#' @export
 
 
 cptsa <- function(cancer.type, data.category, gene.name) {
@@ -32,7 +39,7 @@ cptsa <- function(cancer.type, data.category, gene.name) {
   if (missing(gene.name)) stop("Gene name is missing")
 
   # Read cancer-PDC mapping information
-  pdc_cancer_info <- read.csv("./data1/cancer_PDC_info.csv",check.names = FALSE)
+  pdc_cancer_info <- read.csv("cancer_PDC_info.csv", check.names = FALSE)
 
   valid_cancer_types <- unique(c(pdc_cancer_info$cancer_type, pdc_cancer_info$abbreviation))
 
@@ -63,6 +70,48 @@ cptsa <- function(cancer.type, data.category, gene.name) {
     stop(paste("No PDC IDs found for", cancer.type, "in", data.category))
   }
 
+  # Helper function to read CSV from zip file
+  read_csv_from_zip <- function(zip_path, file_name) {
+    # Check if the file exists in the zip
+    zip_contents <- unzip(zip_path, list = TRUE)
+    if (!(file_name %in% zip_contents$Name)) {
+      return(NULL)
+    }
+
+    # Create a temporary directory to extract the file
+    temp_dir <- tempdir()
+    unzip(zip_path, files = file_name, exdir = temp_dir)
+
+    # Read the CSV file
+    result <- read.csv(file.path(temp_dir, file_name), check.names = FALSE)
+
+    # Clean up
+    unlink(file.path(temp_dir, file_name))
+
+    return(result)
+  }
+
+  # Helper function to read CSV with row names from zip file
+  read_csv_with_rownames_from_zip <- function(zip_path, file_name) {
+    # Check if the file exists in the zip
+    zip_contents <- unzip(zip_path, list = TRUE)
+    if (!(file_name %in% zip_contents$Name)) {
+      return(NULL)
+    }
+
+    # Create a temporary directory to extract the file
+    temp_dir <- tempdir()
+    unzip(zip_path, files = file_name, exdir = temp_dir)
+
+    # Read the CSV file with row names
+    result <- read.csv(file.path(temp_dir, file_name), row.names = 1, check.names = FALSE, header = TRUE)
+
+    # Clean up
+    unlink(file.path(temp_dir, file_name))
+
+    return(result)
+  }
+
   # Create a list to store results for each PDC ID
   results_list <- list()
 
@@ -71,8 +120,8 @@ cptsa <- function(cancer.type, data.category, gene.name) {
     # Initialize results for current PDC ID
     current_result <- list()
 
-    # Clinical data file path
-    clinical_file <- file.path("./data1/Clinical data", pdc_id, paste0(pdc_id, ".csv"))
+    # Clinical data file path (still in folder)
+    clinical_file <- file.path("Clinical data", pdc_id, paste0(pdc_id, ".csv"))
     if (!file.exists(clinical_file)) {
       warning(sprintf("Clinical data file not found for PDC ID %s. Skipping.", pdc_id))
       next
@@ -81,29 +130,48 @@ cptsa <- function(cancer.type, data.category, gene.name) {
     # Read clinical data
     clinical <- read.csv(clinical_file, check.names = FALSE)
 
-    # Gene expression data file path
-    if (data.category == "Transcriptome") {
-      expression_file <- file.path("./data1", "Transcriptome", paste0(pdc_id, "_rna_tumor_tidy.csv"))
-      normal_expression_file <- file.path("./data1", "Transcriptome", paste0(pdc_id, "_rna_normal_tidy.csv"))
-    } else if (data.category == "Proteome") {
-      expression_file <- file.path("./data1", "Proteome", paste0(pdc_id, "_pro_tumor_nor.csv"))
-      normal_expression_file <- file.path("./data1", "Proteome", paste0(pdc_id, "_pro_normal_nor.csv"))
-    }
-
-    if (!file.exists(expression_file)) {
-      warning(sprintf("Gene expression file not found for PDC ID %s. Skipping.", pdc_id))
+    # Build zip file paths
+    zip_path <- paste0(data.category, ".zip")
+    if (!file.exists(zip_path)) {
+      warning(sprintf("Zip file %s not found. Skipping.", zip_path))
       next
     }
 
-    # Read tumor gene expression data
-    tumor_expression <- read.csv(expression_file, row.names = 1, check.names = FALSE, header = TRUE)
+    # Define file paths within the zip archive
+    if (data.category == "Transcriptome") {
+      expression_file <- paste0(pdc_id, "_rna_tumor_tidy.csv")
+      normal_expression_file <- paste0(pdc_id, "_rna_normal_tidy.csv")
+    } else if (data.category == "Proteome") {
+      expression_file <- paste0(pdc_id, "_pro_tumor_nor.csv")
+      normal_expression_file <- paste0(pdc_id, "_pro_normal_nor.csv")
+    }
 
-    # Check if normal tissue data is available
-    has_normal_data <- file.exists(normal_expression_file)
+    # Get the list of zip file contents
+    zip_contents <- unzip(zip_path, list = TRUE)$Name
+
+    # Check if tumor expression file exists in the zip
+    if (!(expression_file %in% zip_contents)) {
+      warning(sprintf("Gene expression file %s not found in %s. Skipping.", expression_file, zip_path))
+      next
+    }
+
+    # Read tumor gene expression data from zip
+    tumor_expression <- read_csv_with_rownames_from_zip(zip_path, expression_file)
+    if (is.null(tumor_expression)) {
+      warning(sprintf("Failed to read tumor expression data for PDC ID %s. Skipping.", pdc_id))
+      next
+    }
+
+    # Check if normal tissue data is available in the zip
+    has_normal_data <- normal_expression_file %in% zip_contents
     normal_expression <- NULL
 
     if (has_normal_data) {
-      normal_expression <- read.csv(normal_expression_file, row.names = 1, check.names = FALSE, header = TRUE)
+      normal_expression <- read_csv_with_rownames_from_zip(zip_path, normal_expression_file)
+      if (is.null(normal_expression)) {
+        has_normal_data <- FALSE
+        warning(sprintf("Failed to read normal expression data for PDC ID %s.", pdc_id))
+      }
     }
 
     # Keep samples with "Vital Status" as Alive or Dead
@@ -157,7 +225,6 @@ cptsa <- function(cancer.type, data.category, gene.name) {
     km.by.pro <- survfit(Surv(`Days to Death`, `Vital Status`) ~ group, data = clinical_m)
     logrank_test <- survdiff(Surv(`Days to Death`, `Vital Status`) ~ group, data = clinical_m)
 
-
     group_levels <- levels(factor(clinical_m$group))
     color_palette <- ifelse(group_levels == "Down", "skyblue", "lightpink")
 
@@ -176,9 +243,9 @@ cptsa <- function(cancer.type, data.category, gene.name) {
       palette = color_palette,
       ggtheme = theme_bw()+
         theme(
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()
-      )
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank()
+        )
     )
 
     # Save results for the current PDC ID
@@ -197,6 +264,7 @@ cptsa <- function(cancer.type, data.category, gene.name) {
 
   return(results_list)
 }
+
 
 
 
