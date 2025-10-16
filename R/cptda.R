@@ -37,9 +37,15 @@ cptda <- function(cancer.type,
     stop("Error: Missing required parameters. Please provide 'cancer.type', 'log2FC', and 'top.gene'.")
   }
 
-  info_file <- file.path("cancer_PDC_info.csv")
+  # Get package data directory path
+  base_dir <- system.file("extdata", package = "CPGTA")
+  if (base_dir == "") {
+    stop("CPGTA package inst/extdata directory not found. Please ensure the package is properly installed.")
+  }
+
+  info_file <- file.path(base_dir, "cancer_PDC_info.csv")
   if (!file.exists(info_file)) {
-    stop("Error: 'cancer_PDC_info.csv' does not exist in the specified path.")
+    stop("Error: 'cancer_PDC_info.csv' does not exist in the package data directory.")
   }
 
   cancer_info <- read.csv(info_file, stringsAsFactors = FALSE)
@@ -86,7 +92,11 @@ cptda <- function(cancer.type,
   plots_list <- list()
 
   for (pdc_code in pdc_codes) {
-    zip_file <- "Counts.zip"
+    zip_file <- file.path(base_dir, "Counts.zip")
+    if (!file.exists(zip_file)) {
+      stop("Error: 'Counts.zip' does not exist in the package data directory.")
+    }
+
     # Create temporary directory to extract files
     temp_dir <- tempdir()
     # Define file paths within zip
@@ -248,6 +258,7 @@ cptda <- function(cancer.type,
   # 4. Return results
   return(invisible(plots_list))
 }
+
 
 
 
