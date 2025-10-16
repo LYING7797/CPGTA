@@ -30,8 +30,11 @@
 
 cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
                   sample.type = NULL, PDC.study.identifier = NULL) {
-  # Base directory path
-  base_dir <- "./"
+  # Base directory path - changed to package's inst/extdata directory
+  base_dir <- system.file("extdata", package = "CPGTA")
+  if (base_dir == "") {
+    stop("CPGTA package inst/extdata directory not found. Please ensure the package is properly installed.")
+  }
 
   # Check required parameters
   if (is.null(cancer.type) && is.null(PDC.study.identifier)) {
@@ -51,7 +54,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
   # Load cancer-PDC mapping information
   cancer_pdc_info_path <- file.path(base_dir, "cancer_PDC_info.csv")
   if (!file.exists(cancer_pdc_info_path)) {
-    stop("The file cancer_PDC_info.csv was not found, unable to retrieve the mapping between cancer types and PDC studies.")
+    stop("The file cancer_PDC_info.csv was not found in the package data directory, unable to retrieve the mapping between cancer types and PDC studies.")
   }
   cancer_pdc_info <- read.csv(cancer_pdc_info_path, check.names = FALSE)
 
@@ -186,7 +189,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
     zip_path <- file.path(base_dir, "Biospecimen.zip")
 
     if (!file.exists(zip_path)) {
-      stop("Biospecimen.zip file not found.")
+      stop("Biospecimen.zip file not found in the package data directory.")
     }
 
     zip_contents <- unzip(zip_path, list = TRUE)$Name
@@ -220,7 +223,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
     zip_path <- file.path(base_dir, "Clinical data.zip")
 
     if (!file.exists(zip_path)) {
-      stop("Clinical data.zip file not found.")
+      stop("Clinical data.zip file not found in the package data directory.")
     }
 
     zip_contents <- unzip(zip_path, list = TRUE)$Name
@@ -263,7 +266,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
     zip_path <- file.path(base_dir, "Simple Nucleotide Variation.zip")
 
     if (!file.exists(zip_path)) {
-      stop("Simple Nucleotide Variation.zip file not found.")
+      stop("Simple Nucleotide Variation.zip file not found in the package data directory.")
     }
 
     for (pdc_id in pdc_ids) {
@@ -285,10 +288,10 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
   if (data.category == "Counts") {
     results <- list()
 
-    # Counts now is a folder in current directory
+    # Counts now is a folder in package's inst/extdata directory
     counts_dir <- file.path(base_dir, "Counts")
     if (!dir.exists(counts_dir)) {
-      warning("The Counts directory was not found.")
+      warning("The Counts directory was not found in the package data directory.")
     } else {
       for (pdc_id in pdc_ids) {
         file_pattern <- paste0("^", pdc_id)
@@ -338,7 +341,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
   if (data.category == "Transcriptome" && "counts" %in% data.type) {
     counts_dir <- file.path(base_dir, "Counts")
     if (!dir.exists(counts_dir)) {
-      warning("The Counts directory was not found.")
+      warning("The Counts directory was not found in the package data directory.")
     } else {
       for (pdc_id in pdc_ids) {
         file_pattern <- paste0("^", pdc_id)
@@ -376,7 +379,7 @@ cptod <- function(cancer.type = NULL, data.category, data.type = NULL,
     # Build the zip file path
     zip_path <- file.path(base_dir, paste0(data.category, ".zip"))
     if (!file.exists(zip_path)) {
-      warning(paste(data.category, ".zip file not found."))
+      warning(paste(data.category, ".zip file not found in the package data directory."))
       next
     }
 
