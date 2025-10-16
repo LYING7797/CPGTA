@@ -19,7 +19,6 @@
 #' @importFrom ggplot2 ggplot aes geom_boxplot scale_fill_manual theme_bw labs theme geom_point geom_text position_jitter annotate
 #' @export
 
-
 cptca <- function(gene.name,
                   cancer.type,
                   data.category) {
@@ -38,10 +37,16 @@ cptca <- function(gene.name,
     stop("Error: 'data.category' contains invalid types. Valid options: Transcriptome, Proteome, Phosphoproteome.")
   }
 
+  # Get package data directory path
+  base_dir <- system.file("extdata", package = "CPGTA")
+  if (base_dir == "") {
+    stop("CPGTA package inst/extdata directory not found. Please ensure the package is properly installed.")
+  }
+
   # 2. Read cancer_PDC_info.csv and get PDC codes
-  pdc_info_file <- file.path("cancer_PDC_info.csv")
+  pdc_info_file <- file.path(base_dir, "cancer_PDC_info.csv")
   if (!file.exists(pdc_info_file)) {
-    stop("Error: 'cancer_PDC_info.csv' file not found. Please check the path or filename.")
+    stop("Error: 'cancer_PDC_info.csv' file not found in the package data directory.")
   }
 
   cancer_info <- read.csv(pdc_info_file, stringsAsFactors = FALSE)
@@ -137,7 +142,7 @@ cptca <- function(gene.name,
       return(NULL)
     }
 
-    zip_path <- file.path(paste0(omics, ".zip"))
+    zip_path <- file.path(base_dir, paste0(omics, ".zip"))
 
     dfs <- list()
     for (code in pdc_codes) {
@@ -216,7 +221,7 @@ cptca <- function(gene.name,
   corr_tumor  <- calc_correlation_by_gene(omics1_tumor, omics2_tumor)
   corr_normal <- calc_correlation_by_gene(omics1_normal, omics2_normal)
 
-  # 5. Organize results and visualization 
+  # 5. Organize results and visualization
   if (is.null(corr_tumor)) {
     corr_tumor <- data.frame(gene = character(0), correlation = numeric(0), Tissue = character(0))
   } else {
@@ -314,4 +319,6 @@ cptca <- function(gene.name,
     plot = p
   )))
 }
+
+
 
