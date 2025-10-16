@@ -36,8 +36,14 @@ cptgev <- function(gene.name, data.category) {
     stop("data.category must be either 'Proteome' or 'Transcriptome'")
   }
 
-  # Set zip file path 
-  zip_path <- paste0(data.category, ".zip")
+  # Get package data directory path
+  base_dir <- system.file("extdata", package = "CPGTA")
+  if (base_dir == "") {
+    stop("CPGTA package inst/extdata directory not found. Please ensure the package is properly installed.")
+  }
+
+  # Set zip file path
+  zip_path <- file.path(base_dir, paste0(data.category, ".zip"))
 
   # Check if zip file exists
   if (!file.exists(zip_path)) {
@@ -63,13 +69,13 @@ cptgev <- function(gene.name, data.category) {
     pdc_codes <- unique(gsub("(PDC\\d+)_.*", "\\1", tidy_files))
   }
 
-  # Read cancer info file from current directory
-  cancer_info_path <- "cancer_PDC_info.csv"
+  # Read cancer info file from package data directory
+  cancer_info_path <- file.path(base_dir, "cancer_PDC_info.csv")
   if (file.exists(cancer_info_path)) {
     cancer_info <- read.csv(cancer_info_path, stringsAsFactors = FALSE)
   } else {
     cancer_info <- NULL
-    warning("cancer_PDC_info.csv not found in current directory. Using PDC codes as labels.")
+    warning("cancer_PDC_info.csv not found in package data directory. Using PDC codes as labels.")
   }
 
   # Prepare list to store results
@@ -223,6 +229,12 @@ cptgev <- function(gene.name, data.category) {
   # Return plot object and data
   return(list(plot = p, data = all_data))
 }
+
+
+
+
+
+
 
 
 
