@@ -19,7 +19,7 @@
 #' result <- cptsnv(cancer.type = "BRCA")
 #'
 #' # SNV analysis for specific PDC identifiers
-#' result <- cptsnv(PDC.study.identifier = c("PDC000125", "PDC00234"))
+#' result <- cptsnv(PDC.study.identifier = c("PDC000125"))
 #'
 #' # Analyze SNVs in lung cancer with custom parameters
 #' #' lung_cancer_results <- cptsnv(
@@ -39,13 +39,22 @@
 #'
 #' @export
 
-
 cptsnv <- function(cancer.type = NULL,
                    PDC.study.identifier = NULL,
                    top_n_genes = 20,
                    min_mut_freq = 0.05) {
-  cancer_pdc_info_path = "cancer_PDC_info.csv"  
-  snv_zip_path = "Simple Nucleotide Variation.zip"  
+  # Get file paths from package directory
+  cancer_pdc_info_path <- system.file("extdata", "cancer_PDC_info.csv", package = "CPGTA")
+  snv_zip_path <- system.file("extdata", "Simple Nucleotide Variation.zip", package = "CPGTA")
+  
+  # Check if files exist in package
+  if (cancer_pdc_info_path == "") {
+    stop("Error: File 'cancer_PDC_info.csv' not found in package data directories")
+  }
+  
+  if (snv_zip_path == "") {
+    stop("Error: File 'Simple Nucleotide Variation.zip' not found in package data directories")
+  }
 
   # Create output directories
   output_dir <- file.path(getwd(), "snv_analysis_results")
@@ -56,11 +65,6 @@ cptsnv <- function(cancer.type = NULL,
   # Parameter validation
   if (is.null(cancer.type) && is.null(PDC.study.identifier)) {
     stop("At least one of the parameters, cancer.type or PDC.study.identifier, must be provided.")
-  }
-
-  # Check if SNV zip file exists
-  if (!file.exists(snv_zip_path)) {
-    stop(paste("SNV zip file not found:", snv_zip_path))
   }
 
   # Load required packages
@@ -75,7 +79,6 @@ cptsnv <- function(cancer.type = NULL,
     }
     library(pkg, character.only = TRUE)
   }
-
 
   cancer_pdc_info <- read.csv(cancer_pdc_info_path, check.names = FALSE)
 
@@ -554,6 +557,7 @@ cptsnv <- function(cancer.type = NULL,
 }
 
 
+  
 
 
 
