@@ -29,6 +29,7 @@
 #' @importFrom ggplot2 theme_bw theme element_blank
 #'
 #' @export
+
 cptsa <- function(cancer.type, data.category, gene.name) {
   # Check the validity of input parameters
   if (missing(cancer.type)) stop("Cancer type is missing")
@@ -36,8 +37,21 @@ cptsa <- function(cancer.type, data.category, gene.name) {
   if (!data.category %in% c("Transcriptome", "Proteome")) stop("Invalid data category. Only 'Transcriptome' and 'Proteome' are supported")
   if (missing(gene.name)) stop("Gene name is missing")
 
+  # Get file paths from package directory
+  cancer_pdc_info_path <- system.file("extdata", "cancer_PDC_info.csv", package = "CPGTA")
+  clinical_zip_path <- system.file("extdata", "Clinical data.zip", package = "CPGTA")
+
+  # Check if files exist in package
+  if (cancer_pdc_info_path == "") {
+    stop("Error: File 'cancer_PDC_info.csv' not found in package data directories")
+  }
+
+  if (clinical_zip_path == "") {
+    stop("Error: File 'Clinical data.zip' not found in package data directories")
+  }
+
   # Read cancer-PDC mapping information
-  pdc_cancer_info <- read.csv("cancer_PDC_info.csv", check.names = FALSE)
+  pdc_cancer_info <- read.csv(cancer_pdc_info_path, check.names = FALSE)
 
   valid_cancer_types <- unique(c(pdc_cancer_info$cancer_type, pdc_cancer_info$abbreviation))
 
@@ -119,13 +133,7 @@ cptsa <- function(cancer.type, data.category, gene.name) {
     current_result <- list()
 
     # Clinical data file path (now in zip file with folders)
-    clinical_zip_path <- "Clinical data.zip"
     clinical_file_path <- file.path(pdc_id, paste0(pdc_id, ".csv"))
-
-    if (!file.exists(clinical_zip_path)) {
-      warning(sprintf("Clinical data zip file not found. Skipping PDC ID %s.", pdc_id))
-      next
-    }
 
     # Check if clinical file exists in the zip
     clinical_zip_contents <- unzip(clinical_zip_path, list = TRUE)$Name
@@ -142,9 +150,9 @@ cptsa <- function(cancer.type, data.category, gene.name) {
     }
 
     # Build zip file paths for expression data
-    expression_zip_path <- paste0(data.category, ".zip")
-    if (!file.exists(expression_zip_path)) {
-      warning(sprintf("Zip file %s not found. Skipping.", expression_zip_path))
+    expression_zip_path <- system.file("extdata", paste0(data.category, ".zip"), package = "CPGTA")
+    if (expression_zip_path == "") {
+      warning(sprintf("Zip file %s not found in package data directories. Skipping.", paste0(data.category, ".zip")))
       next
     }
 
