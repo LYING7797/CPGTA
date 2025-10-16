@@ -23,50 +23,42 @@
 #' @export
 
 cptic <- function(cancer.type, data.category) {
-  # Check if all necessary parameters are provided
+  # Check if all required parameters are provided
   if (missing(cancer.type) || missing(data.category)) {
     stop("Error: Missing required input parameters 'cancer.type' or 'data.category'.")
   }
-
-  # Create a helper function to get package data file paths
-  get_package_file <- function(file) {
-    # Try ../inst/extdata (if in the R/ directory)
-    dev_path <- file.path("inst", "extdata", file)
-    if (file.exists(dev_path)) return(dev_path)
-
-    # 尝试../inst/extdata (如果在R/目录中)
-    dev_path2 <- file.path("..", "inst", "extdata", file)
-    if (file.exists(dev_path2)) return(dev_path2)
-
-    # Try the installed package path
-    pkg_path <- system.file("extdata", file, package = "CPGTA")
-    if (pkg_path != "") return(pkg_path)
-
-    stop("Could not find file '", file, "' in package data directories")
+  
+  # Directly use system.file to get file paths
+  cancer_pdc_info_file <- system.file("extdata", "cancer_PDC_info.csv", package = "CPGTA")
+  tme_zip_file <- system.file("extdata", "TME.zip", package = "CPGTA")
+  
+  # Check if files exist
+  if (cancer_pdc_info_file == "") {
+    stop("Error: File 'cancer_PDC_info.csv' not found in package data directories")
   }
-
-  # Define file paths using the helper function
-  cancer_pdc_info_file <- get_package_file("cancer_PDC_info.csv")
-  tme_zip_file <- get_package_file("TME.zip")
-
+  
+  if (tme_zip_file == "") {
+    stop("Error: File 'TME.zip' not found in package data directories")
+  }
+  
   # Helper function to read files from zip
   read_file_from_zip <- function(zip_path, file_name, is_csv = TRUE, has_header = TRUE, row_names = NULL) {
     if (!file.exists(zip_path)) {
       stop(paste("Error: Zip file not found:", zip_path))
     }
-
-    # Check if the file exists in the zip
+    
+    # Check if file exists in zip
     zip_contents <- unzip(zip_path, list = TRUE)$Name
     if (!file_name %in% zip_contents) {
       stop(paste("Error: File", file_name, "not found in", zip_path))
     }
-
-    # Create a temporary directory and extract the file
+    
+    # Create temporary directory and extract file
     temp_dir <- tempdir()
     tryCatch({
       unzip(zip_path, files = file_name, exdir = temp_dir, overwrite = TRUE)
       temp_file_path <- file.path(temp_dir, file_name)
-
+      
       if (is_csv) {
         if (!is.null(row_names)) {
           data <- read.csv(temp_file_path, row.names = row_names, stringsAsFactors = FALSE)
@@ -76,35 +68,35 @@ cptic <- function(cancer.type, data.category) {
       } else {
         data <- read.delim(temp_file_path, stringsAsFactors = FALSE)
       }
-
+      
       unlink(temp_file_path)
       return(data)
     }, error = function(e) {
       stop(paste("Error reading file from zip:", e$message))
     })
   }
-
+  
   # Read cancer_PDC_info.csv
   cancer_pdc_info <- tryCatch({
     read.csv(cancer_pdc_info_file, stringsAsFactors = FALSE)
   }, error = function(e) {
     stop("Error: Unable to read 'cancer_PDC_info.csv' file. Path tried: ", cancer_pdc_info_file)
   })
-
+  
   valid_cancer_types <- unique(c(cancer_pdc_info$cancer_type, cancer_pdc_info$abbreviation))
-
-  # Validate if cancer.type is within the valid range
+  
+  # Validate if cancer.type is within valid range
   if (!(cancer.type %in% valid_cancer_types)) {
     stop(paste("Error: 'cancer.type' is not in the valid range. Valid values are:", paste(valid_cancer_types, collapse = "\n ")))
   }
-
-  # Validate if data.category is within the valid range
+  
+  # Validate if data.category is within valid range
   valid_data_categories <- c("Transcriptome", "Proteome")
   if (!(data.category %in% valid_data_categories)) {
     stop(paste("Error: 'data.category' is not in the valid range. Valid values are:", paste(valid_data_categories, collapse = "\n ")))
   }
-
-  # Choose the appropriate file based on data.category
+  
+  # Choose appropriate file based on data.category
   if (data.category == "Transcriptome") {
     classified_file <- "classified_samples_rna.tsv"
     pdc_column <- "Transcriptome"
@@ -112,19 +104,19 @@ cptic <- function(cancer.type, data.category) {
     classified_file <- "classified_samples_pro.tsv"
     pdc_column <- "Proteome"
   }
-
+  
   # Read alltumor.csv from zip
   alltumor <- read_file_from_zip(tme_zip_file, "alltumor.csv", is_csv = TRUE, row_names = 1)
-
+  
   # Read classified samples file from zip
   classified_samples <- read_file_from_zip(tme_zip_file, classified_file, is_csv = FALSE)
-
-  # Get the PDC value corresponding to the column name (based on cancer.type)
-  # First, find the relevant row for cancer.type in 'cancer_PDC_info.csv'
+  
+  # Get PDC values corresponding to column names (based on cancer.type)
+  # First, find the row related to cancer.type in 'cancer_PDC_info.csv'
   cancer_info_row <- cancer_pdc_info[
     cancer_pdc_info$cancer_type == cancer.type | cancer_pdc_info$abbreviation == cancer.type,]
-
-  # Get the corresponding PDC column name and provide specific error information based on data.category
+  
+  # Get corresponding PDC column name and provide specific error message based on data.category
   if (data.category == "Transcriptome") {
     pdc_column_name <- cancer_info_row$Transcriptome
     if (all(!(pdc_column_name %in% alltumor$Transcriptome))) {
@@ -136,24 +128,25 @@ cptic <- function(cancer.type, data.category) {
       stop(paste("Error: The cancer type", cancer.type, "does not have available proteomic immune subtype data."))
     }
   }
-
+  
   # Get corresponding PDC values
   pdc_values <- alltumor[[pdc_column]]
-
+  
   # Get sample names corresponding to PDC values
   sample_names <- alltumor$sample[pdc_values %in% pdc_column_name]
-
+  
   # Filter classified samples based on sample names
   result_matrix <- classified_samples[classified_samples$sample %in% sample_names, ]
-
-  # Check if any matching samples are found
+  
+  # Check if any matching samples were found
   if (nrow(result_matrix) == 0) {
     stop("Error: No matching samples found based on the provided parameters.")
   }
-
-  # Return the result matrix
+  
+  # Return result matrix
   return(result_matrix)
 }
+
 
 
 
