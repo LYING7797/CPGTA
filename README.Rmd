@@ -22,7 +22,6 @@ The package requires additional data files to function properly. Please download
 
 From Zenodo (Recommended): Download the data from our Zenodo repository (DOI: 10.5281/zenodo.17366523)
 
-Required Files:
 The following files need to be downloaded:
 Copy Number Variation.zip
 Simple Nucleotide Variation.zip
@@ -36,7 +35,7 @@ Place the zip files directly in the inst/extdata folder of the CPGTA package ins
 Important: Do not unzip the files - the package will handle the compressed files directly
 To find the correct installation directory, you can use:
 
-Installation Instructions:
+## Installation Instructions:
 1. Download all the required zip files listed above
 2. Place the zip files directly in the inst/extdata folder of the CPGTA package installation directory
 3. Important: Do not unzip the files - the package will handle the compressed files directly
@@ -44,8 +43,8 @@ To find the correct installation directory, you can use:
 
 ```{r cars}
 find.package("CPGTA")
-Navigate to the directory shown by the command above, then locate and place the zip files in the inst/extdata subfolder.
 ```
+Navigate to the directory shown by the command above, then locate and place the zip files in the inst/extdata subfolder.
 
 ## Functions
 
