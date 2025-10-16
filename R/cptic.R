@@ -28,17 +28,26 @@ cptic <- function(cancer.type, data.category) {
     stop("Error: Missing required input parameters 'cancer.type' or 'data.category'.")
   }
 
-  # Define file paths
-  cancer_pdc_info_file <- "cancer_PDC_info.csv"
-  tme_zip_file <- "TME.zip"
+  # Create a helper function to get package data file paths
+  get_package_file <- function(file) {
+    # Try ../inst/extdata (if in the R/ directory)
+    dev_path <- file.path("inst", "extdata", file)
+    if (file.exists(dev_path)) return(dev_path)
 
-  # Check if files exist
-  if (!file.exists(cancer_pdc_info_file)) {
-    stop(paste("Error: File not found:", cancer_pdc_info_file))
+    # 尝试../inst/extdata (如果在R/目录中)
+    dev_path2 <- file.path("..", "inst", "extdata", file)
+    if (file.exists(dev_path2)) return(dev_path2)
+
+    # Try the installed package path
+    pkg_path <- system.file("extdata", file, package = "CPGTA")
+    if (pkg_path != "") return(pkg_path)
+
+    stop("Could not find file '", file, "' in package data directories")
   }
-  if (!file.exists(tme_zip_file)) {
-    stop(paste("Error: File not found:", tme_zip_file))
-  }
+
+  # Define file paths using the helper function
+  cancer_pdc_info_file <- get_package_file("cancer_PDC_info.csv")
+  tme_zip_file <- get_package_file("TME.zip")
 
   # Helper function to read files from zip
   read_file_from_zip <- function(zip_path, file_name, is_csv = TRUE, has_header = TRUE, row_names = NULL) {
@@ -79,7 +88,7 @@ cptic <- function(cancer.type, data.category) {
   cancer_pdc_info <- tryCatch({
     read.csv(cancer_pdc_info_file, stringsAsFactors = FALSE)
   }, error = function(e) {
-    stop("Error: Unable to read 'cancer_PDC_info.csv' file.")
+    stop("Error: Unable to read 'cancer_PDC_info.csv' file. Path tried: ", cancer_pdc_info_file)
   })
 
   valid_cancer_types <- unique(c(cancer_pdc_info$cancer_type, cancer_pdc_info$abbreviation))
