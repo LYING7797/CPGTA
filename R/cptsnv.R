@@ -46,12 +46,12 @@ cptsnv <- function(cancer.type = NULL,
   # Get file paths from package directory
   cancer_pdc_info_path <- system.file("extdata", "cancer_PDC_info.csv", package = "CPGTA")
   snv_zip_path <- system.file("extdata", "Simple Nucleotide Variation.zip", package = "CPGTA")
-  
+
   # Check if files exist in package
   if (cancer_pdc_info_path == "") {
     stop("Error: File 'cancer_PDC_info.csv' not found in package data directories")
   }
-  
+
   if (snv_zip_path == "") {
     stop("Error: File 'Simple Nucleotide Variation.zip' not found in package data directories")
   }
@@ -555,6 +555,7 @@ cptsnv <- function(cancer.type = NULL,
   # Return results list
   return(results)
 }
+
 
 
   
