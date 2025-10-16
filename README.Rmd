@@ -20,20 +20,34 @@ devtools::install_github("LYING7797/CPGTA")
 ## Required Data
 The package requires additional data files to function properly. Please download the required data using one of the following methods:
 
-From Zenodo (Recommended): Download the data from our Zenodo repository (DOI: 10.5281/zenodo.17357650)
-        
-After downloading, place all the data in the installation directory of the CPGTA package. The typical location would be within your R library path where the CPGTA package is installed.
+From Zenodo (Recommended): Download the data from our Zenodo repository (DOI: 10.5281/zenodo.17366523)
 
-To find the correct location, you can use:
+Required Files:
+The following files need to be downloaded:
+Copy Number Variation.zip
+Simple Nucleotide Variation.zip
+Transcriptome.zip
+Counts.zip
+Proteome.zip
+Phosphoproteome.zip
+Installation Instructions:
+Download all the required zip files listed above
+Place the zip files directly in the inst/extdata folder of the CPGTA package installation directory
+Important: Do not unzip the files - the package will handle the compressed files directly
+To find the correct installation directory, you can use:
+
+Installation Instructions:
+1. Download all the required zip files listed above
+2. Place the zip files directly in the inst/extdata folder of the CPGTA package installation directory
+3. Important: Do not unzip the files - the package will handle the compressed files directly
+To find the correct installation directory, you can use:
 
 ```{r cars}
 find.package("CPGTA")
+Navigate to the directory shown by the command above, then locate and place the zip files in the inst/extdata subfolder.
 ```
-Place all the data in the directory shown by the command above.
-
 
 ## Functions
-
 
 cptod()
 This function is used to obtain cancer multi-omics data from the data directory. You can filter and download relevant data according to parameters such as cancer type, data category, data type, and sample type.
